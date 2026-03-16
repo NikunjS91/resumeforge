@@ -47,8 +47,8 @@ REMOTE_PATTERNS = [
     r'\bremote\b',
     r'\bwork from home\b',
     r'\bwfh\b',
-    r'\bhybrid\b',
     r'\bfully remote\b',
+    r'\b100% remote\b',
 ]
 
 
