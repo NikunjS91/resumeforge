@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+*.egg-info/
+
+# Environment
+.env
+*.env.local
+
+# Database
+backend/data/resumeforge.db
+backend/data/uploads/
+
+# Logs
+/tmp/resumeforge.log
+/tmp/resumeforge.error.log
+/tmp/ollama.log
+
+# macOS
+.DS_Store
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# IDE
+.vscode/
+.idea/
