@@ -21,7 +21,11 @@ SECTION_KEYWORDS = {
                        "credentials", "achievements", "awards", "honors"],
     "leadership":     ["leadership", "activities", "volunteer", "extracurricular",
                        "community", "involvement", "clubs", "organizations",
-                       "leadership & activities", "activities & leadership"],
+                       "leadership & activities", "activities & leadership",
+                       "leadership and activities",
+                       "activities and leadership",
+                       "awards",
+                       "honors"],
 }
 
 SECTION_TYPES = list(SECTION_KEYWORDS.keys())
@@ -38,6 +42,11 @@ CONTENT_LINE_SIGNALS = [
     "@",
     "•",
     "technologies:",
+    "tech stack:",
+    "stack:",
+    "tools:",
+    "frameworks:",
+    "languages:",
     "jan ", "feb ", "mar ", "apr ", "may ", "jun ",
     "jul ", "aug ", "sep ", "oct ", "nov ", "dec ",
 ]
