@@ -47,30 +47,37 @@ def ollama_call(prompt: str, timeout: int = TIMEOUT) -> str | None:
 
 def nvidia_nim_call(prompt: str) -> str | None:
     """
-    Call NVIDIA NIM API using OpenAI-compatible format.
-    ~10x faster than local Ollama for resume tailoring.
-    Falls back to Ollama if key not set or call fails.
+    Call NVIDIA NIM hosted API using streaming mode.
+    Base URL: https://integrate.api.nvidia.com/v1
+    Model: meta/llama-3.3-70b-instruct
     """
     api_key = os.getenv("NVIDIA_API_KEY")
     if not api_key:
-        logger.warning("NVIDIA_API_KEY not found in environment — cannot use NVIDIA NIM")
+        logger.warning("NVIDIA_API_KEY not found in environment")
         return None
     try:
         client = OpenAI(
             base_url=NVIDIA_NIM_BASE,
             api_key=api_key,
         )
-        response = client.chat.completions.create(
+        completion = client.chat.completions.create(
             model=NVIDIA_MODEL,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
+            temperature=0.2,
+            top_p=0.7,
             max_tokens=4000,
-            timeout=NVIDIA_TIMEOUT,
+            stream=True,
         )
-        result = response.choices[0].message.content.strip()
-        # Strip any think tags just in case
+        # Collect streamed chunks
+        result = ""
+        for chunk in completion:
+            if chunk.choices and chunk.choices[0].delta.content is not None:
+                result += chunk.choices[0].delta.content
+
+        result = result.strip()
+        # Strip think tags just in case
         result = re.sub(r'<think>.*?</think>', '', result, flags=re.DOTALL).strip()
-        logger.info(f"NVIDIA NIM call successful — model={NVIDIA_MODEL}")
+        logger.info(f"NVIDIA NIM streaming call successful — model={NVIDIA_MODEL}, chars={len(result)}")
         return result if result else None
     except Exception as e:
         logger.warning(f"NVIDIA NIM call failed: {e}")
