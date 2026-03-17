@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -11,7 +12,7 @@ from models.resume_section import ResumeSection
 from models.job import Job
 from models.user import User
 from routers.auth import get_current_user
-from modules.tailor.resume_tailor import tailor_resume, DEFAULT_MODEL
+from modules.tailor.resume_tailor import tailor_resume, DEFAULT_MODEL, NVIDIA_MODEL
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/tailor", tags=["Resume Tailor"])
@@ -19,13 +20,15 @@ router = APIRouter(prefix="/api/tailor", tags=["Resume Tailor"])
 
 class TailorRequest(BaseModel):
     resume_id: int
-    job_id: int
+    job_id:    int
+    provider:  Optional[str] = "ollama"  # "ollama" or "nvidia"
 
     class Config:
         json_schema_extra = {
             "example": {
-                "resume_id": 1,
-                "job_id": 1
+                "resume_id": 2,
+                "job_id":    1,
+                "provider":  "ollama"
             }
         }
 
@@ -107,6 +110,7 @@ def tailor_resume_endpoint(
             company_name=job.company_name or "the company",
             required_skills=required_skills,
             nice_to_have_skills=nice_to_have_skills,
+            provider=request.provider,
         )
     except RuntimeError as e:
         raise HTTPException(
@@ -121,6 +125,7 @@ def tailor_resume_endpoint(
         )
 
     # ── 7. Save to tailoring_sessions table ──────────────────────────
+    ai_model = NVIDIA_MODEL if request.provider == "nvidia" else DEFAULT_MODEL
     session_record = TailoringSession(
         user_id=current_user.id,
         resume_id=resume.id,
@@ -130,8 +135,8 @@ def tailor_resume_endpoint(
             "sections": result["tailored_sections"],
             "improvement_notes": result["improvement_notes"],
         }),
-        ai_provider="ollama",
-        ai_model=DEFAULT_MODEL,
+        ai_provider=request.provider,
+        ai_model=ai_model,
     )
 
     db.add(session_record)
@@ -147,7 +152,7 @@ def tailor_resume_endpoint(
         "resume_name": resume.name,
         "job_title": job.job_title,
         "company_name": job.company_name,
-        "ai_model": DEFAULT_MODEL,
+        "ai_model": ai_model,
         "sections_tailored": result["sections_tailored"],
         "total_sections": result["total_sections"],
         "improvement_notes": result["improvement_notes"],

@@ -1,8 +1,10 @@
+import os
 import re
 import json
 import json as json_lib
 import logging
 import requests
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +12,10 @@ OLLAMA_BASE = "http://localhost:11434"
 DEFAULT_MODEL = "qwen3:14b"
 TIMEOUT = 180
 ONESHOT_TIMEOUT = 600   # one-shot sends full resume — needs more time
+
+NVIDIA_NIM_BASE  = "https://integrate.api.nvidia.com/v1"
+NVIDIA_MODEL     = "meta/llama-3.3-70b-instruct"
+NVIDIA_TIMEOUT   = 60
 
 
 # ─── OLLAMA HELPERS ──────────────────────────────────────────────────────────
@@ -39,12 +45,45 @@ def ollama_call(prompt: str, timeout: int = TIMEOUT) -> str | None:
         return None
 
 
+def nvidia_nim_call(prompt: str) -> str | None:
+    """
+    Call NVIDIA NIM API using OpenAI-compatible format.
+    ~10x faster than local Ollama for resume tailoring.
+    Falls back to Ollama if key not set or call fails.
+    """
+    api_key = os.getenv("NVIDIA_API_KEY")
+    if not api_key:
+        logger.warning("NVIDIA_API_KEY not found in environment — cannot use NVIDIA NIM")
+        return None
+    try:
+        client = OpenAI(
+            base_url=NVIDIA_NIM_BASE,
+            api_key=api_key,
+        )
+        response = client.chat.completions.create(
+            model=NVIDIA_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=4000,
+            timeout=NVIDIA_TIMEOUT,
+        )
+        result = response.choices[0].message.content.strip()
+        # Strip any think tags just in case
+        result = re.sub(r'<think>.*?</think>', '', result, flags=re.DOTALL).strip()
+        logger.info(f"NVIDIA NIM call successful — model={NVIDIA_MODEL}")
+        return result if result else None
+    except Exception as e:
+        logger.warning(f"NVIDIA NIM call failed: {e}")
+        return None
+
+
 def tailor_resume_oneshot(
     resume_sections: list,
     job_title: str,
     company_name: str,
     required_skills: list,
     nice_to_have_skills: list,
+    provider: str = "ollama",
 ) -> list | None:
     """
     Send the ENTIRE resume to qwen3:14b in ONE call.
@@ -93,7 +132,15 @@ def tailor_resume_oneshot(
         f"Full Resume:\n{resume_text[:4000]}"
     )
 
-    response = ollama_call(prompt, timeout=ONESHOT_TIMEOUT)
+    # Route to the correct provider
+    if provider == "nvidia":
+        logger.info("Using NVIDIA NIM for one-shot tailoring")
+        response = nvidia_nim_call(prompt)
+        if not response:
+            logger.warning("NVIDIA NIM failed — falling back to Ollama")
+            response = ollama_call(prompt, timeout=ONESHOT_TIMEOUT)
+    else:
+        response = ollama_call(prompt, timeout=ONESHOT_TIMEOUT)
     if not response:
         logger.warning("One-shot tailor failed — Ollama returned empty response")
         return None
@@ -231,6 +278,7 @@ def tailor_resume(
     company_name: str,
     required_skills: list,
     nice_to_have_skills: list,
+    provider: str = "ollama",
 ) -> dict:
     """
     Full tailoring pipeline — one-shot approach for speed.
@@ -254,6 +302,7 @@ def tailor_resume(
         company_name=company_name,
         required_skills=required_skills,
         nice_to_have_skills=nice_to_have_skills,
+        provider=provider,
     )
 
     # ── Fallback to per-section if one-shot failed ───────────────────
