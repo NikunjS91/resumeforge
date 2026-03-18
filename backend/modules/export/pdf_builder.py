@@ -253,6 +253,22 @@ def build_pdf(
     # Sort sections by position_index
     sorted_sections = sorted(sections, key=lambda s: s.get("position_index", 0))
 
+    # Deduplicate — keep only the FIRST occurrence of each section_type
+    # Exception: allow multiple 'experience' and 'projects' entries
+    ALLOW_MULTIPLE = {"experience", "projects"}
+    seen_types = set()
+    deduped_sections = []
+    for s in sorted_sections:
+        sec_type = s.get("section_type", "other")
+        if sec_type in ALLOW_MULTIPLE:
+            deduped_sections.append(s)
+        elif sec_type not in seen_types:
+            seen_types.add(sec_type)
+            deduped_sections.append(s)
+        # else: skip duplicate
+
+    sorted_sections = deduped_sections
+
     # Extract contact section
     contact_section = next(
         (s for s in sorted_sections if s.get("section_type") == "contact"),

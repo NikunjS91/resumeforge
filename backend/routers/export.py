@@ -77,14 +77,20 @@ def export_pdf(
             tailored_data = json.loads(session.tailored_json or "{}")
             sections_data = [
                 {
-                    "section_type":  s.get("section_type"),
-                    "section_label": s.get("section_label"),
-                    "content_text":  s.get("tailored_text", ""),
+                    "section_type":   s.get("section_type"),
+                    "section_label":  s.get("section_label", ""),
+                    "content_text":   s.get("tailored_text", s.get("content_text", "")),
                     "position_index": s.get("position_index", 0),
                 }
                 for s in tailored_data.get("sections", [])
+                # Only include sections with actual text content
+                if s.get("tailored_text", s.get("content_text", "")).strip()
             ]
-            improvement_notes = tailored_data.get("improvement_notes", [])
+            # Load improvement notes from session.improvement_notes_json to prevent bleeding
+            try:
+                improvement_notes = json.loads(session.improvement_notes_json or "[]")
+            except:
+                improvement_notes = []
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
