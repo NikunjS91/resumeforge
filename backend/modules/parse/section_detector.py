@@ -90,15 +90,11 @@ def classify_line(line: str) -> tuple:
 # ALL CAPS sub-headings (conf=0.7) are treated as content, not boundaries.
 MULTI_ITEM_SECTIONS = {"projects", "experience", "education", "certifications", "leadership"}
 
-# Inside a projects block, lines starting with these prefixes are content, NOT headings.
-# e.g. "Technologies: Python, AWS" must not split off as a new "skills" section.
-SKIP_AS_HEADING_IN_PROJECTS = {
-    "technologies:",
-    "tech stack:",
-    "stack:",
-    "tools:",
-    "frameworks:",
-    "languages:",
+# Within a projects block, lines starting with these prefixes are content, NOT new section headings.
+INLINE_CONTENT_PREFIXES = {
+    "technologies:", "tech stack:", "stack:",
+    "tools:", "frameworks:", "languages:",
+    "built with:", "tech:", "techstack:",
 }
 
 
@@ -124,10 +120,10 @@ def split_into_blocks(raw_text: str) -> list:
         if current_type in MULTI_ITEM_SECTIONS and confidence < 1.0:
             section_type = None
 
-        # Suppress technology sub-labels inside projects blocks
+        # Within projects, treat inline content prefixes as content not new sections
         if section_type is not None and current_type == "projects":
-            lower_line = line.strip().lower()
-            if any(lower_line.startswith(p) for p in SKIP_AS_HEADING_IN_PROJECTS):
+            line_lower = line.strip().lower()
+            if any(line_lower.startswith(p) for p in INLINE_CONTENT_PREFIXES):
                 section_type = None
 
         if section_type is not None:
