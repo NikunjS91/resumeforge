@@ -40,7 +40,7 @@ export default function ResumeUpload({ onUpload }) {
           {error && <p className="text-red-500 text-sm">{error}</p>}
         </div>
       ) : (
-        <Success title={`${result.resume_name} parsed`}
+        <Success title={`${result.name || result.resume_name || 'Resume'} parsed`}
           subtitle={`${result.section_count} sections · ${result.char_count?.toLocaleString()} chars`}>
           <div className="flex flex-wrap gap-1.5 mt-2">
             {result.sections?.map(s => (

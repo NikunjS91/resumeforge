@@ -16,7 +16,15 @@ export default function ATSScore({ resumeId, jobId, sessionId, onScored }) {
       })
       setResult(res.data)
       onScored(res.data.ats_score)
-    } catch (e) { console.error(e) }
+    } catch (e) {
+      console.error(e)
+      setResult({
+        ats_score: 0,
+        recommendation: 'Run a fresh JD analysis with required skills to get a score.',
+        matched_keywords: [], missing_keywords: [],
+        matched_count: 0, required_count: 0
+      })
+    }
     finally { setLoading(false) }
   }
 

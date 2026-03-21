@@ -34,7 +34,7 @@ export default function JobInput({ onAnalyze }) {
           {error && <p className="text-red-500 text-sm">{error}</p>}
         </div>
       ) : (
-        <Success title={`${result.job_title} at ${result.company_name}`}
+        <Success title={`${result.job_title || 'Role'} at ${result.company_name || 'Company'}`}
           subtitle={`${result.required_count} required · ${result.nicetohave_count} nice-to-have`}>
           <div className="flex flex-wrap gap-1.5 mt-2">
             {result.required_skills?.slice(0, 12).map(s => (
