@@ -91,9 +91,9 @@ def extract_regex(jd_text: str) -> dict:
         result["company_name"] = at_match.group(2).strip()
         logger.info(f"Regex extracted: title='{result['job_title']}', company='{result['company_name']}'")
 
-    # Skills extraction (pattern: "Requirements:" or "Required:" followed by comma-separated list)
+    # Skills extraction (pattern: "Requirements:" or "Required:" or "Must have:" followed by comma-separated list)
     skills_match = re.search(
-        r'(?:requirements?|required|must.?have|skills?)\s*:\s*([^.]+)',
+        r'(?:requirements?|required|must.?have|skills?|qualifications?)\s*:\s*([^.]+)',
         jd_text, re.IGNORECASE
     )
     if skills_match:
@@ -105,7 +105,7 @@ def extract_regex(jd_text: str) -> dict:
 
     # Nice-to-have skills extraction
     nice_match = re.search(
-        r'(?:nice.?to.?have|preferred|bonus|plus)\s*:\s*([^.]+)',
+        r'(?:nice.?to.?have|preferred|bonus|plus|desirable)\s*:\s*([^.]+)',
         jd_text, re.IGNORECASE
     )
     if nice_match:
