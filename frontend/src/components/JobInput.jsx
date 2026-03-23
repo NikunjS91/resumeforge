@@ -34,14 +34,20 @@ export default function JobInput({ onAnalyze }) {
           {error && <p className="text-red-500 text-sm">{error}</p>}
         </div>
       ) : (
-        <Success title={`${result.job_title || 'Role'} at ${result.company_name || 'Company'}`}
-          subtitle={`${result.required_count} required · ${result.nicetohave_count} nice-to-have`}>
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {result.required_skills?.slice(0, 12).map(s => (
-              <span key={s} className="bg-blue-100 text-blue-700 text-xs px-2.5 py-0.5 rounded-full">{s}</span>
-            ))}
-          </div>
-        </Success>
+        <>
+          <Success title={`${result.job_title || 'Role'} at ${result.company_name || 'Company'}`}
+            subtitle={`${result.required_count} required · ${result.nicetohave_count} nice-to-have`}>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {result.required_skills?.slice(0, 12).map(s => (
+                <span key={s} className="bg-blue-100 text-blue-700 text-xs px-2.5 py-0.5 rounded-full">{s}</span>
+              ))}
+            </div>
+          </Success>
+          <button onClick={() => setResult(null)}
+            className="w-full mt-3 bg-gray-100 text-gray-700 py-2 rounded-xl text-sm font-medium hover:bg-gray-200 transition">
+            🔄 Analyze Different JD
+          </button>
+        </>
       )}
     </Card>
   )

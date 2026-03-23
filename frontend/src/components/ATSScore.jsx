@@ -11,21 +11,28 @@ export default function ATSScore({ resumeId, jobId, sessionId, onScored }) {
 
   const scoreBoth = async () => {
     setLoading(true)
+    console.log('🔍 ATSScore: Starting scoreBoth()', { resumeId, jobId, sessionId })
+    
     try {
       // Score original resume first
+      console.log('📊 Scoring original resume:', { resume_id: resumeId, job_id: jobId })
       const origRes = await api.post('/api/score/ats', {
         resume_id: resumeId, job_id: jobId
       })
+      console.log('✅ Original score received:', origRes.data)
       setOriginalScore(origRes.data)
 
       // Then score tailored resume
+      console.log('📊 Scoring tailored resume:', { resume_id: resumeId, job_id: jobId, session_id: sessionId })
       const tailRes = await api.post('/api/score/ats', {
         resume_id: resumeId, job_id: jobId, session_id: sessionId
       })
+      console.log('✅ Tailored score received:', tailRes.data)
       setTailoredScore(tailRes.data)
       onScored(tailRes.data.ats_score)
     } catch (e) {
-      console.error(e)
+      console.error('❌ ATSScore error:', e)
+      console.error('Error details:', e.response?.data)
       setTailoredScore({
         ats_score: 0,
         recommendation: 'Run a fresh JD analysis with required skills to get a score.',
@@ -42,6 +49,20 @@ export default function ATSScore({ resumeId, jobId, sessionId, onScored }) {
   return (
     <Card title="📊 Step 4 — ATS Score Comparison">
       {loading && <p className="text-gray-400 text-sm">Scoring original and tailored resumes...</p>}
+      
+      {/* Show helpful message if both scores are 0 (no required skills) */}
+      {tailoredScore && originalScore && tailoredScore.ats_score === 0 && originalScore.ats_score === 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+          <p className="text-sm text-amber-800 font-medium mb-2">⚠️ Job description has no required skills to score against</p>
+          <p className="text-xs text-amber-700">
+            Please analyze a new job description that includes required skills in this format:
+          </p>
+          <p className="text-xs text-amber-900 font-mono bg-amber-100 px-2 py-1 rounded mt-2">
+            Requirements: skill1, skill2, skill3...
+          </p>
+        </div>
+      )}
+
       {tailoredScore && (
         <div className="space-y-4">
           {/* Score Comparison */}

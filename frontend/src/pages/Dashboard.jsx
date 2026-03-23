@@ -19,6 +19,13 @@ export default function Dashboard() {
   const [sessionId, setSessionId] = useState(null)
   const [atsScore,  setAtsScore]  = useState(null)
 
+  // When jobId changes, reset downstream states
+  const handleJobAnalyzed = (newJobId) => {
+    setJobId(newJobId)
+    setSessionId(null)
+    setAtsScore(null)
+  }
+
   const currentStep = !resumeId ? 1 : !jobId ? 2 : !sessionId ? 3 : atsScore === null ? 4 : 5
 
   return (
@@ -58,7 +65,7 @@ export default function Dashboard() {
         {/* Steps */}
         <div className="space-y-5">
           <ResumeUpload onUpload={setResumeId} />
-          {resumeId  && <JobInput onAnalyze={setJobId} />}
+          {resumeId  && <JobInput onAnalyze={handleJobAnalyzed} />}
           {jobId     && <TailorPanel resumeId={resumeId} jobId={jobId} onTailored={setSessionId} />}
           {sessionId && <ATSScore resumeId={resumeId} jobId={jobId} sessionId={sessionId} onScored={setAtsScore} />}
           {sessionId && <ExportPanel resumeId={resumeId} sessionId={sessionId} />}
