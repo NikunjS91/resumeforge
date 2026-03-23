@@ -84,12 +84,41 @@ def extract_regex(jd_text: str) -> dict:
     if salary_match:
         result["salary_range"] = salary_match.group(0).strip()
 
-    # Job title extraction (pattern: "<title> at <company>")
+    # Job title and company extraction - try multiple patterns
+
+    # Pattern 1: "X at Y" (e.g., "Senior Engineer at Google")
     at_match = re.search(r'^(.+?)\s+at\s+(.+?)(?:\.|$)', jd_text, re.IGNORECASE)
     if at_match:
         result["job_title"] = at_match.group(1).strip()
         result["company_name"] = at_match.group(2).strip()
-        logger.info(f"Regex extracted: title='{result['job_title']}', company='{result['company_name']}'")
+        logger.info(f"Regex pattern 1 (X at Y): title='{result['job_title']}', company='{result['company_name']}'")
+
+    # Pattern 2: "Company: X" or "Company Name: X"
+    if not result["company_name"]:
+        company_match = re.search(r'company\s*(?:name)?:\s*([A-Z][^\n,]{2,40})', jd_text, re.IGNORECASE)
+        if company_match:
+            result["company_name"] = company_match.group(1).strip()
+            logger.info(f"Regex pattern 2 (Company:): company='{result['company_name']}'")
+
+    # Pattern 3: "Position: X" or "Role: X" or "Job Title: X"
+    if not result["job_title"]:
+        title_match = re.search(r'(?:position|role|job title|title):\s*([A-Z][^\n,]{5,60})', jd_text, re.IGNORECASE)
+        if title_match:
+            result["job_title"] = title_match.group(1).strip()
+            logger.info(f"Regex pattern 3 (Position:): title='{result['job_title']}'")
+
+    # Pattern 4: "Company is hiring/looking for/seeking a Role"
+    if not result["company_name"] or not result["job_title"]:
+        hiring_match = re.search(
+            r'([A-Z][a-zA-Z\s]{2,30})\s+is\s+(?:hiring|looking for|seeking)\s+(?:a|an)?\s*([A-Z][^\n,]{5,60})',
+            jd_text
+        )
+        if hiring_match:
+            if not result["company_name"]:
+                result["company_name"] = hiring_match.group(1).strip()
+            if not result["job_title"]:
+                result["job_title"] = hiring_match.group(2).strip()
+            logger.info(f"Regex pattern 4 (X is hiring Y): company='{result['company_name']}', title='{result['job_title']}'")
 
     # Skills extraction (pattern: "Requirements:" or "Required:" or "Must have:" followed by comma-separated list)
     skills_match = re.search(
