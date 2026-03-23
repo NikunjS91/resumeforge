@@ -27,9 +27,12 @@ def ollama_extract(prompt: str) -> str | None:
             json={"model": DEFAULT_MODEL, "prompt": prompt, "stream": False},
             timeout=180
         )
-        return r.json().get("response", "").strip()
+        r.raise_for_status()
+        response_text = r.json().get("response", "").strip()
+        logger.info(f"Ollama response received: {len(response_text)} chars")
+        return response_text
     except Exception as e:
-        logger.warning(f"Ollama extract error: {e}")
+        logger.error(f"Ollama extract error: {e}")
         return None
 
 
@@ -80,6 +83,36 @@ def extract_regex(jd_text: str) -> dict:
     )
     if salary_match:
         result["salary_range"] = salary_match.group(0).strip()
+
+    # Job title extraction (pattern: "<title> at <company>")
+    at_match = re.search(r'^(.+?)\s+at\s+(.+?)(?:\.|$)', jd_text, re.IGNORECASE)
+    if at_match:
+        result["job_title"] = at_match.group(1).strip()
+        result["company_name"] = at_match.group(2).strip()
+        logger.info(f"Regex extracted: title='{result['job_title']}', company='{result['company_name']}'")
+
+    # Skills extraction (pattern: "Requirements:" or "Required:" followed by comma-separated list)
+    skills_match = re.search(
+        r'(?:requirements?|required|must.?have|skills?)\s*:\s*([^.]+)',
+        jd_text, re.IGNORECASE
+    )
+    if skills_match:
+        skills_text = skills_match.group(1).strip()
+        # Split by common delimiters
+        skills = [s.strip() for s in re.split(r'[,;•\n]', skills_text) if s.strip()]
+        result["required_skills"] = [s for s in skills if len(s) > 1 and len(s) < 50][:20]
+        logger.info(f"Regex extracted {len(result['required_skills'])} required skills")
+
+    # Nice-to-have skills extraction
+    nice_match = re.search(
+        r'(?:nice.?to.?have|preferred|bonus|plus)\s*:\s*([^.]+)',
+        jd_text, re.IGNORECASE
+    )
+    if nice_match:
+        nice_text = nice_match.group(1).strip()
+        nice_skills = [s.strip() for s in re.split(r'[,;•\n]', nice_text) if s.strip()]
+        result["nice_to_have_skills"] = [s for s in nice_skills if len(s) > 1 and len(s) < 50][:10]
+        logger.info(f"Regex extracted {len(result['nice_to_have_skills'])} nice-to-have skills")
 
     return result
 
@@ -150,8 +183,8 @@ def extract_llm(jd_text: str, regex_result: dict) -> dict:
 def analyze_jd(jd_text: str) -> dict:
     """
     Full JD analysis pipeline.
-    Phase 1: Regex for seniority, remote, salary.
-    Phase 2: Ollama LLM for company, title, location, skills.
+    Phase 1: Regex for seniority, remote, salary, basic company/title/skills.
+    Phase 2: Ollama LLM for more accurate extraction (if available).
     Merges both results — LLM values override regex where both exist.
 
     Returns dict ready for DB insertion into the jobs table.
@@ -159,23 +192,29 @@ def analyze_jd(jd_text: str) -> dict:
     if not jd_text or not jd_text.strip():
         raise ValueError("Job description text cannot be empty")
 
-    # Phase 1 — regex
+    # Phase 1 — regex (now includes basic company/title/skills extraction)
     result = extract_regex(jd_text)
-    logger.info(f"Regex extracted: seniority={result['seniority_level']}, remote={result['is_remote']}")
+    logger.info(f"Regex extracted: seniority={result['seniority_level']}, remote={result['is_remote']}, "
+                f"company={result.get('company_name')}, title={result.get('job_title')}, "
+                f"skills={len(result.get('required_skills', []))}")
 
-    # Phase 2 — LLM
+    # Phase 2 — LLM (optional enhancement)
     llm_data = extract_llm(jd_text, result)
     if llm_data:
         logger.info(f"LLM extracted: company={llm_data.get('company_name')}, "
                     f"title={llm_data.get('job_title')}, "
                     f"required_skills={len(llm_data.get('required_skills', []))}")
-        # LLM overrides regex for overlapping fields
+        # LLM overrides regex for overlapping fields (if values are not None/empty)
         for key, val in llm_data.items():
             if val:
                 result[key] = val
     else:
-        result["required_skills"] = []
-        result["nice_to_have_skills"] = []
+        logger.warning("LLM extraction failed or unavailable, using regex results only")
+        # Ensure these keys exist even if not set by regex
+        if "required_skills" not in result:
+            result["required_skills"] = []
+        if "nice_to_have_skills" not in result:
+            result["nice_to_have_skills"] = []
 
     result["jd_raw_text"] = jd_text.strip()
     return result
