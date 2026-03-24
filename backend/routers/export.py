@@ -1,3 +1,4 @@
+import os
 import json
 import logging
 from typing import Optional
@@ -15,7 +16,8 @@ from models.resume_section import ResumeSection
 from models.job import Job
 from models.user import User
 from routers.auth import get_current_user
-from modules.export.latex_filler import fill_template
+from modules.export.latex_generator import generate_latex_stage1, build_data_summary
+from modules.export.latex_reviewer import review_latex_stage2
 from modules.export.latex_compiler import compile_latex
 
 logger = logging.getLogger(__name__)
@@ -122,34 +124,72 @@ def export_pdf(
         resume_name = resume.name
         output_stem = f"original_{resume_name}_{request.resume_id}"
 
-    # ── 4. Fill LaTeX template ────────────────────────────────────────────────
+    # ── 4. Load job data for skills ─────────────────────────────────────────────
+    required_skills = []
+    nicetohave_skills = []
+    improvement_notes = []
+    is_tailored = bool(request.session_id)
+
+    if request.session_id and session:
+        job = db.query(Job).filter(Job.id == session.job_id).first()
+        if job:
+            try:
+                required_skills = json.loads(job.required_skills_json or '[]')
+                nicetohave_skills = json.loads(job.nicetohave_skills_json or '[]')
+            except Exception:
+                pass
+        try:
+            improvement_notes = json.loads(session.improvement_notes_json or '[]')
+        except Exception:
+            pass
+
+    # ── 5. Stage 1 — Generate LaTeX ──────────────────────────────────────────────
     try:
-        tex_content = fill_template(
+        latex_stage1 = generate_latex_stage1(
             sections=sections_data,
             job_title=job_title,
             company_name=company_name,
+            required_skills=required_skills,
+            nicetohave_skills=nicetohave_skills,
+            improvement_notes=improvement_notes,
+            is_tailored=is_tailored,
+            provider="nvidia" if os.getenv('NVIDIA_API_KEY') else "ollama"
         )
+        logger.info(f"Stage 1 LaTeX generated: {len(latex_stage1)} chars")
     except Exception as e:
-        logger.error(f"Template fill error: {e}")
-        raise HTTPException(status_code=500,
-            detail=f"Failed to fill LaTeX template: {e}")
+        logger.error(f"Stage 1 generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"LaTeX generation failed: {e}")
 
-    # ── 5. Compile to PDF ─────────────────────────────────────────────────────
+    # ── 6. Stage 2 — Review and Fix ──────────────────────────────────────────────
     try:
-        pdf_path = compile_latex(tex_content, output_stem)
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        original_data = build_data_summary(sections_data)
+        latex_final = review_latex_stage2(
+            latex_code=latex_stage1,
+            original_data=original_data,
+            provider="nvidia" if os.getenv('NVIDIA_API_KEY') else "ollama"
+        )
+        logger.info(f"Stage 2 reviewed LaTeX: {len(latex_final)} chars")
     except Exception as e:
-        logger.error(f"PDF compile error: {e}")
-        raise HTTPException(status_code=500,
-            detail=f"PDF compilation failed: {e}")
+        logger.warning(f"Stage 2 review failed, using Stage 1 output: {e}")
+        latex_final = latex_stage1
 
-    # ── 6. Save pdf_path to DB ────────────────────────────────────────────────
+    # ── 7. Compile to PDF ────────────────────────────────────────────────────────
+    try:
+        pdf_path = compile_latex(latex_final, output_stem)
+    except RuntimeError as e:
+        # If compilation fails, try Stage 1 output directly
+        logger.warning(f"Compilation of Stage 2 output failed, trying Stage 1: {e}")
+        try:
+            pdf_path = compile_latex(latex_stage1, output_stem + "_s1")
+        except RuntimeError as e2:
+            raise HTTPException(status_code=500, detail=f"PDF compilation failed: {e2}")
+
+    # ── 8. Save pdf_path to DB ────────────────────────────────────────────────
     if session:
         session.pdf_path = pdf_path
         db.commit()
 
-    # ── 7. Return PDF ─────────────────────────────────────────────────────────
+    # ── 9. Return PDF ─────────────────────────────────────────────────────────
     download_name = f"ResumeForge_{resume_name}.pdf"
     return FileResponse(
         path=pdf_path,
