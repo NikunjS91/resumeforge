@@ -45,6 +45,17 @@ FORMATTING_RULES = """
 LATEX FORMATTING RULES:
 1. Document class: article, 10pt, letterpaper
 2. Margins: top=0.4in, bottom=0.4in, left=0.5in, right=0.5in
+
+CRITICAL: You MUST fit everything on ONE PAGE.
+If content is too long:
+- Reduce bullets per section (max 4 per role, max 3 per project)
+- Use tighter vspace: \\vspace{1pt} between sections
+- Reduce section spacing: spaceBefore=0, spaceAfter=0
+- Skills table: reduce row spacing to [0.5pt]
+- Use \\small font size (9pt) for body if needed
+- Remove oldest/least relevant bullets first
+NEVER add a second page — truncate content if necessary
+
 3. Name: \\Huge\\textbf, centered, color #1a1a2e
 4. Section headers: \\large\\textbf\\uppercase with \\hrule below, color #16213e
 5. Body text: 10pt regular, linespread 0.88
@@ -83,7 +94,10 @@ SECTION_ORDER_FRESHER = [
 STAGE_1_SYSTEM_PROMPT = """You are an expert resume writer and LaTeX specialist. 
 Your job is to generate a complete, professional, ATS-optimized LaTeX resume.
 You have deep knowledge of what recruiters look for and how ATS systems work.
-You produce clean, compilable LaTeX code that renders to a beautiful 1-page resume."""
+You produce clean, compilable LaTeX code that renders to a beautiful 1-page resume.
+
+CRITICAL CONSTRAINT: The output MUST compile to exactly ONE PAGE.
+Aggressively cut content to fit. Fewer bullets is better than overflow."""
 
 STAGE_2_SYSTEM_PROMPT = """You are a senior resume reviewer and LaTeX expert.
 Your job is to review a generated LaTeX resume and fix any issues.
