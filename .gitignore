@@ -14,6 +14,10 @@ venv/
 # Database
 backend/data/resumeforge.db
 backend/data/uploads/
+backend/data/exports/
+
+# Documentation (private guides)
+documentedGuide/
 
 # Logs
 /tmp/resumeforge.log
