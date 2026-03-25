@@ -10,7 +10,7 @@ from config import get_settings
 from database import create_tables, SessionLocal
 from seed import seed_ai_providers
 
-from routers import auth, parse, analyze, tailor, score, export, providers
+from routers import auth, parse, analyze, tailor, score, export, providers, history
 
 settings = get_settings()
 
@@ -64,6 +64,7 @@ app.include_router(tailor.router)
 app.include_router(score.router)
 app.include_router(export.router)
 app.include_router(providers.router)
+app.include_router(history.router)
 
 
 @app.get("/")

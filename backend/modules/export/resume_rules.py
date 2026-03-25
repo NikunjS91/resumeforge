@@ -103,3 +103,50 @@ STAGE_2_SYSTEM_PROMPT = """You are a senior resume reviewer and LaTeX expert.
 Your job is to review a generated LaTeX resume and fix any issues.
 You check for rule compliance, LaTeX syntax errors, content quality, and formatting.
 You return the corrected, improved LaTeX code ready for compilation."""
+
+
+# ─── Template Definitions ─────────────────────────────────────────────────────
+
+TEMPLATES = {
+    "classic": {
+        "name": "Classic",
+        "description": "Dark navy header, tabular skills. Best for Tech/Engineering.",
+        "file": "templates/professional.tex",
+        "style_rules": """
+STYLE: Classic Professional
+- Use dark navy color (#1a1a2e) for name and section headers
+- Section headers: \\large\\textbf\\uppercase with \\hrule below
+- Skills in tabular format with bold category labels
+- Name in \\Huge\\textbf centered
+- Use \\definecolor for all colors
+"""
+    },
+    "minimal": {
+        "name": "Minimal",
+        "description": "Clean, no colors, maximum ATS safety. Best for Finance/Corporate.",
+        "file": "templates/minimal.tex",
+        "style_rules": """
+STYLE: Minimal Clean
+- NO colors — black text only throughout
+- Section headers: plain \\large\\textbf with thin hrule
+- Name in \\LARGE\\textbf centered
+- Clean bullet points, maximum whitespace
+- ATS-safe: no decorative elements
+"""
+    },
+    "modern": {
+        "name": "Modern",
+        "description": "Blue accent bar, colored bullets. Best for Startups/Creative roles.",
+        "file": "templates/modern.tex",
+        "style_rules": """
+STYLE: Modern with Accent
+- Use blue accent color (#2563eb) for section decorators and bullets
+- Section headers: left accent rule + bold text
+- Name in \\Huge\\textbf, subtitle in gray
+- Colored bullet points (\\color{accentcolor}\\textbullet)
+- Experience section comes FIRST (before education)
+"""
+    }
+}
+
+DEFAULT_TEMPLATE = "classic"

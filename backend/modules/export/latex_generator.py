@@ -11,7 +11,7 @@ from pathlib import Path
 from .resume_rules import (
     UNIVERSAL_RULES, EXPERIENCED_RULES, FRESHER_RULES,
     FORMATTING_RULES, SECTION_ORDER_EXPERIENCED, SECTION_ORDER_FRESHER,
-    STAGE_1_SYSTEM_PROMPT
+    STAGE_1_SYSTEM_PROMPT, TEMPLATES, DEFAULT_TEMPLATE
 )
 
 logger = logging.getLogger(__name__)
@@ -83,7 +83,8 @@ def build_stage1_prompt(
     data_summary: str,
     candidate_type: str,
     job_title: str = "",
-    company_name: str = ""
+    company_name: str = "",
+    template: str = "classic"
 ) -> str:
     """Build the Stage 1 prompt for LaTeX generation."""
 
@@ -98,6 +99,10 @@ def build_stage1_prompt(
         section_order = SECTION_ORDER_FRESHER
 
     rules += "\n" + FORMATTING_RULES
+
+    # Add template-specific style rules
+    template_config = TEMPLATES.get(template, TEMPLATES[DEFAULT_TEMPLATE])
+    rules += f"\n{template_config['style_rules']}"
 
     target_note = ""
     if job_title:
@@ -221,7 +226,8 @@ def generate_latex_stage1(
     nicetohave_skills: list = None,
     improvement_notes: list = None,
     is_tailored: bool = False,
-    provider: str = "ollama"
+    provider: str = "ollama",
+    template: str = "classic"
 ) -> str:
     """
     Stage 1: Generate complete LaTeX resume using LLM.
@@ -246,7 +252,8 @@ def generate_latex_stage1(
         data_summary=data_summary,
         candidate_type=candidate_type,
         job_title=job_title,
-        company_name=company_name
+        company_name=company_name,
+        template=template
     )
 
     logger.info(f"Stage 1: Generating LaTeX with {provider}...")

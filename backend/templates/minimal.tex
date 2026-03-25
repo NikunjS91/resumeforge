@@ -1,0 +1,70 @@
+% ResumeForge Minimal Template
+% Clean, ATS-safe, no colors
+\documentclass[10pt,letterpaper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\geometry{letterpaper, top=0.5in, bottom=0.5in, left=0.6in, right=0.6in}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\pagestyle{empty}
+\linespread{0.9}
+
+\hypersetup{colorlinks=false, pdfborder={0 0 0}}
+
+\newcommand{\resumesection}[1]{
+    \vspace{4pt}
+    {\large\textbf{#1}}
+    \vspace{2pt}
+    \hrule height 0.4pt
+    \vspace{2pt}
+}
+\newcommand{\resumesubheading}[4]{
+    \textbf{#1} \hfill #2\\
+    \textit{\small #3} \hfill \textit{\small #4}
+    \vspace{1pt}
+}
+\setlist[itemize]{
+    leftmargin=0.15in, nosep, itemsep=0pt,
+    parsep=0pt, topsep=0pt, partopsep=0pt,
+    label=\textbullet
+}
+
+\begin{document}
+
+%% HEADER
+\begin{center}
+    {\LARGE\textbf{LATEX_FULL_NAME}}\\
+    \vspace{2pt}
+    LATEX_LOCATION $|$
+    \href{tel:LATEX_PHONE_RAW}{LATEX_PHONE_DISPLAY} $|$
+    \href{mailto:LATEX_EMAIL}{LATEX_EMAIL} $|$
+    \href{LATEX_LINKEDIN_URL}{LinkedIn} $|$
+    \href{LATEX_GITHUB_URL}{GitHub}
+\end{center}
+
+%% EDUCATION
+\resumesection{EDUCATION}
+LATEX_EDUCATION_BLOCK
+
+%% SKILLS
+\resumesection{TECHNICAL SKILLS}
+\begin{tabular}{@{}p{1.4in}p{5.3in}@{}}
+LATEX_SKILLS_ROWS
+\end{tabular}
+
+%% EXPERIENCE
+\resumesection{PROFESSIONAL EXPERIENCE}
+LATEX_EXPERIENCE_BLOCK
+
+%% PROJECTS
+\resumesection{PROJECTS}
+LATEX_PROJECTS_BLOCK
+
+%% LEADERSHIP
+\resumesection{LEADERSHIP \& ACTIVITIES}
+LATEX_LEADERSHIP_BLOCK
+
+\end{document}

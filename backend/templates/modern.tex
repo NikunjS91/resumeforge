@@ -1,0 +1,87 @@
+% ResumeForge Modern Template
+% Left accent bar, clean typography
+\documentclass[10pt,letterpaper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{array}
+
+\geometry{letterpaper, top=0.4in, bottom=0.4in, left=0.55in, right=0.55in}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\pagestyle{empty}
+\linespread{0.88}
+
+\definecolor{accentcolor}{HTML}{2563eb}
+\definecolor{namecolor}{HTML}{111827}
+\definecolor{subcolor}{HTML}{6b7280}
+
+\hypersetup{
+    colorlinks=true,
+    urlcolor=accentcolor,
+    pdfborder={0 0 0}
+}
+
+\newcommand{\resumesection}[1]{
+    \vspace{3pt}
+    {\color{accentcolor}\rule{0.3in}{1.5pt}}
+    \hspace{4pt}
+    {\large\textbf{\color{namecolor}#1}}
+    \vspace{3pt}
+    \hrule height 0.3pt \color{black}
+    \vspace{2pt}
+}
+\newcommand{\resumesubheading}[4]{
+    \textbf{#1} \hfill \textit{\small\color{subcolor}#2}\\
+    \textit{\small\color{subcolor}#3} \hfill \textit{\small\color{subcolor}#4}
+    \vspace{0.5pt}
+}
+\setlist[itemize]{
+    leftmargin=0.15in, nosep, itemsep=0pt,
+    parsep=0pt, topsep=0pt, partopsep=0pt,
+    label={\color{accentcolor}\textbullet}
+}
+
+\begin{document}
+
+%% HEADER
+\begin{center}
+    {\Huge\textbf{\color{namecolor}LATEX_FULL_NAME}}\\
+    \vspace{2pt}
+    {\small\color{subcolor}
+    LATEX_LOCATION $\cdot$
+    \href{tel:LATEX_PHONE_RAW}{LATEX_PHONE_DISPLAY} $\cdot$
+    \href{mailto:LATEX_EMAIL}{LATEX_EMAIL} $\cdot$
+    \href{LATEX_LINKEDIN_URL}{LinkedIn} $\cdot$
+    \href{LATEX_GITHUB_URL}{GitHub}
+    }
+\end{center}
+\vspace{2pt}
+{\color{accentcolor}\rule{\textwidth}{1.5pt}}
+\vspace{2pt}
+
+%% EXPERIENCE
+\resumesection{PROFESSIONAL EXPERIENCE}
+LATEX_EXPERIENCE_BLOCK
+
+%% SKILLS
+\resumesection{TECHNICAL SKILLS}
+\begin{tabular}{@{}p{1.45in}p{5.25in}@{}}
+LATEX_SKILLS_ROWS
+\end{tabular}
+
+%% PROJECTS
+\resumesection{PROJECTS}
+LATEX_PROJECTS_BLOCK
+
+%% EDUCATION
+\resumesection{EDUCATION}
+LATEX_EDUCATION_BLOCK
+
+%% LEADERSHIP
+\resumesection{LEADERSHIP \& ACTIVITIES}
+LATEX_LEADERSHIP_BLOCK
+
+\end{document}

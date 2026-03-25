@@ -32,10 +32,15 @@ def export_status():
 class ExportRequest(BaseModel):
     resume_id: Optional[int] = None
     session_id: Optional[int] = None
+    template: Optional[str] = "classic"
 
     class Config:
         json_schema_extra = {
-            "example": {"resume_id": None, "session_id": 5}
+            "example": {
+                "resume_id": None,
+                "session_id": 5,
+                "template": "classic"  # classic | minimal | modern
+            }
         }
 
 
@@ -153,7 +158,8 @@ def export_pdf(
             nicetohave_skills=nicetohave_skills,
             improvement_notes=improvement_notes,
             is_tailored=is_tailored,
-            provider="nvidia" if os.getenv('NVIDIA_API_KEY') else "ollama"
+            provider="nvidia" if os.getenv('NVIDIA_API_KEY') else "ollama",
+            template=request.template or "classic"
         )
         logger.info(f"Stage 1 LaTeX generated: {len(latex_stage1)} chars")
     except Exception as e:

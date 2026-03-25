@@ -4,6 +4,7 @@ import JobInput     from '../components/JobInput'
 import TailorPanel  from '../components/TailorPanel'
 import ATSScore     from '../components/ATSScore'
 import ExportPanel  from '../components/ExportPanel'
+import History      from './History'
 
 const STEPS = [
   { num: 1, label: 'Upload Resume' },
@@ -18,6 +19,7 @@ export default function Dashboard() {
   const [jobId,     setJobId]     = useState(null)
   const [sessionId, setSessionId] = useState(null)
   const [atsScore,  setAtsScore]  = useState(null)
+  const [activeTab, setActiveTab] = useState('pipeline') // 'pipeline' | 'history'
 
   // When jobId changes, reset downstream states
   const handleJobAnalyzed = (newJobId) => {
@@ -40,36 +42,63 @@ export default function Dashboard() {
       </nav>
 
       <div className="max-w-3xl mx-auto mt-8 px-4 pb-16">
-        {/* Progress bar */}
-        <div className="flex items-center mb-8">
-          {STEPS.map((s, i) => (
-            <div key={s.num} className="flex items-center flex-1">
-              <div className="flex flex-col items-center">
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 transition
-                  ${currentStep > s.num
-                    ? 'bg-green-500 border-green-500 text-white'
-                    : currentStep === s.num
-                      ? 'bg-indigo-600 border-indigo-600 text-white'
-                      : 'bg-white border-gray-300 text-gray-400'}`}>
-                  {currentStep > s.num ? '✓' : s.num}
-                </div>
-                <span className="text-xs text-gray-500 mt-1 hidden sm:block">{s.label}</span>
-              </div>
-              {i < STEPS.length - 1 && (
-                <div className={`flex-1 h-0.5 mx-1 ${currentStep > s.num ? 'bg-green-400' : 'bg-gray-200'}`} />
-              )}
-            </div>
-          ))}
+        {/* Tab Navigation */}
+        <div className="flex border-b border-gray-200 mb-6">
+          <button
+            onClick={() => setActiveTab('pipeline')}
+            className={`px-6 py-2.5 text-sm font-medium border-b-2 transition
+              ${activeTab === 'pipeline'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            ⚡ Pipeline
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`px-6 py-2.5 text-sm font-medium border-b-2 transition
+              ${activeTab === 'history'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            🕐 History
+          </button>
         </div>
 
-        {/* Steps */}
-        <div className="space-y-5">
-          <ResumeUpload onUpload={setResumeId} />
-          {resumeId  && <JobInput onAnalyze={handleJobAnalyzed} />}
-          {jobId     && <TailorPanel resumeId={resumeId} jobId={jobId} onTailored={setSessionId} />}
-          {sessionId && <ATSScore resumeId={resumeId} jobId={jobId} sessionId={sessionId} onScored={setAtsScore} />}
-          {sessionId && <ExportPanel resumeId={resumeId} sessionId={sessionId} />}
-        </div>
+        {/* Conditional content */}
+        {activeTab === 'pipeline' ? (
+          <>
+            {/* Progress bar */}
+            <div className="flex items-center mb-8">
+              {STEPS.map((s, i) => (
+                <div key={s.num} className="flex items-center flex-1">
+                  <div className="flex flex-col items-center">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 transition
+                      ${currentStep > s.num
+                        ? 'bg-green-500 border-green-500 text-white'
+                        : currentStep === s.num
+                          ? 'bg-indigo-600 border-indigo-600 text-white'
+                          : 'bg-white border-gray-300 text-gray-400'}`}>
+                      {currentStep > s.num ? '✓' : s.num}
+                    </div>
+                    <span className="text-xs text-gray-500 mt-1 hidden sm:block">{s.label}</span>
+                  </div>
+                  {i < STEPS.length - 1 && (
+                    <div className={`flex-1 h-0.5 mx-1 ${currentStep > s.num ? 'bg-green-400' : 'bg-gray-200'}`} />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Steps */}
+            <div className="space-y-5">
+              <ResumeUpload onUpload={setResumeId} />
+              {resumeId  && <JobInput onAnalyze={handleJobAnalyzed} />}
+              {jobId     && <TailorPanel resumeId={resumeId} jobId={jobId} onTailored={setSessionId} />}
+              {sessionId && <ATSScore resumeId={resumeId} jobId={jobId} sessionId={sessionId} onScored={setAtsScore} />}
+              {sessionId && <ExportPanel resumeId={resumeId} sessionId={sessionId} />}
+            </div>
+          </>
+        ) : (
+          <History />
+        )}
       </div>
     </div>
   )

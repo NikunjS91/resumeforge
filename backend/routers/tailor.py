@@ -12,7 +12,7 @@ from models.resume_section import ResumeSection
 from models.job import Job
 from models.user import User
 from routers.auth import get_current_user
-from modules.tailor.resume_tailor import tailor_resume, DEFAULT_MODEL, NVIDIA_MODEL
+from modules.tailor.resume_tailor import tailor_resume, DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/tailor", tags=["Resume Tailor"])
@@ -110,7 +110,6 @@ def tailor_resume_endpoint(
             company_name=job.company_name or "the company",
             required_skills=required_skills,
             nice_to_have_skills=nice_to_have_skills,
-            provider=request.provider,
         )
     except RuntimeError as e:
         raise HTTPException(
@@ -125,7 +124,7 @@ def tailor_resume_endpoint(
         )
 
     # ── 7. Save to tailoring_sessions table ──────────────────────────
-    ai_model = NVIDIA_MODEL if request.provider == "nvidia" else DEFAULT_MODEL
+    ai_model = DEFAULT_MODEL
     session_record = TailoringSession(
         user_id=current_user.id,
         resume_id=resume.id,
