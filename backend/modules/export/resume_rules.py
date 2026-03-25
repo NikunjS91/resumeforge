@@ -119,6 +119,9 @@ STYLE: Classic Professional
 - Skills in tabular format with bold category labels
 - Name in \\Huge\\textbf centered
 - Use \\definecolor for all colors
+- Add \\vspace{6pt} BEFORE each section header for clear separation
+- Add \\vspace{3pt} AFTER each section header
+- Use \\vspace{2pt} between job/project entries
 """
     },
     "minimal": {
@@ -132,6 +135,9 @@ STYLE: Minimal Clean
 - Name in \\LARGE\\textbf centered
 - Clean bullet points, maximum whitespace
 - ATS-safe: no decorative elements
+- Add \\vspace{6pt} BEFORE each section header for clear separation
+- Add \\vspace{3pt} AFTER each section header
+- Use \\vspace{2pt} between job entries
 """
     },
     "modern": {
@@ -145,6 +151,9 @@ STYLE: Modern with Accent
 - Name in \\Huge\\textbf, subtitle in gray
 - Colored bullet points (\\color{accentcolor}\\textbullet)
 - Experience section comes FIRST (before education)
+- Add \\vspace{6pt} BEFORE each section header for clear separation
+- Add \\vspace{3pt} AFTER each section header
+- Use \\vspace{2pt} between job/project entries
 """
     }
 }
