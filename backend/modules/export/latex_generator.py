@@ -8,6 +8,7 @@ import json
 import logging
 import requests
 from pathlib import Path
+from .data_validator import validate_sections
 from .resume_rules import (
     UNIVERSAL_RULES, EXPERIENCED_RULES, FRESHER_RULES,
     FORMATTING_RULES, SECTION_ORDER_EXPERIENCED, SECTION_ORDER_FRESHER,
@@ -55,6 +56,14 @@ def build_data_summary(
 
     lines = []
 
+    # ── Run validation first ──────────────────────────────────────────────────
+    validation = validate_sections(sections)
+    if validation['has_issues']:
+        lines.append("=== DATA QUALITY WARNINGS — READ BEFORE GENERATING ===")
+        lines.append(validation['warning_text'])
+        lines.append("=== END WARNINGS ===")
+        lines.append("")
+
     if is_tailored and job_title:
         lines.append(f"TARGET JOB: {job_title} at {company_name}")
         if required_skills:
@@ -86,56 +95,89 @@ def build_stage1_prompt(
     company_name: str = "",
     template: str = "classic"
 ) -> str:
-    """Build the Stage 1 prompt for LaTeX generation."""
 
-    rules = UNIVERSAL_RULES + "\n"
-    section_order = SECTION_ORDER_EXPERIENCED
-
-    if candidate_type == 'experienced':
-        rules += EXPERIENCED_RULES
-        section_order = SECTION_ORDER_EXPERIENCED
-    else:
-        rules += FRESHER_RULES
-        section_order = SECTION_ORDER_FRESHER
-
-    rules += "\n" + FORMATTING_RULES
-
-    # Add template-specific style rules
+    candidate_rules = EXPERIENCED_RULES if candidate_type == 'experienced' else FRESHER_RULES
     template_config = TEMPLATES.get(template, TEMPLATES[DEFAULT_TEMPLATE])
-    rules += f"\n{template_config['style_rules']}"
 
-    target_note = ""
-    if job_title:
-        target_note = f"\nTHIS RESUME IS BEING TAILORED FOR: {job_title} at {company_name}\nPrioritize and emphasize skills and experiences that match this role.\n"
+    target = f"Target: {job_title} at {company_name}" if job_title else ""
 
-    prompt = f"""
-{rules}
+    return f"""You are generating a LaTeX resume. Read all 3 blocks carefully.
 
-{target_note}
+════════════════════════════════════════════════════
+BLOCK 1 — CRITICAL RULES (read before touching data)
+════════════════════════════════════════════════════
 
-SECTION ORDER TO USE: {' → '.join(section_order)}
+ACCURACY RULES (violations = complete failure):
+R1. COPY GPA EXACTLY — if source says 3.84, write 3.84. Never round. Never change.
+R2. COPY URLs EXACTLY — if source has https://linkedin.com/in/nikunj-shetye, use that.
+    If source has placeholder text like "LinkedIn URL", copy "LinkedIn URL" as-is.
+R3. COPY METRICS EXACTLY — preserve ALL numbers from source data:
+    - "reducing operational costs by 35%" → keep "35%"
+    - "improving system uptime to 99.9%" → keep "99.9%"
+    - "reducing deployment time by 40%" → keep "40%"
+    - "improving page load times by 60%" → keep "60%"
+    - "reducing API response time by 45%" → keep "45%"
+    These are REAL metrics from the source — INCLUDE them!
+R4. NO INVENTED NUMBERS — only omit numbers if they DON'T exist in source.
+    If source has a metric, you MUST include it.
+R5. NO INVENTED PROJECTS — only include projects explicitly named in the source data.
 
-Here is ALL the candidate's data:
+COMPLETENESS RULES:
+R6. INCLUDE ALL SECTIONS — Education, Skills, Experience, Projects, Leadership.
+    Do NOT drop any section even if space is tight.
+R7. INCLUDE ALL SKILLS CATEGORIES — every category from source must appear.
+    Shorten entries within a category before removing a whole category.
+R8. INCLUDE ALL PROJECTS — every project from source must appear.
+    Reduce to 3 bullets per project before removing a project entirely.
+
+FORMATTING RULES:
+R9. TARGET ONE PAGE — use these compression techniques:
+    - Margins: 0.4in all sides
+    - Line spacing: \\linespread{{0.85}} or \\renewcommand{{\\baselinestretch}}{{0.85}}
+    - Section spacing: \\vspace{{2pt}} between sections
+    - Bullet spacing: [noitemsep,topsep=0pt,parsep=0pt,partopsep=0pt]
+    - Experience: MAX 4 bullets for current role
+    - Projects: MAX 2 bullets each (keep all 3 projects with 2 bullets each)
+    - Education: Combine to 2 lines per school
+    PRIORITY: Include ALL projects/sections > strict 1-page limit.
+R10. Escape all special chars: & → \\&  % → \\%  $ → \\$  # → \\#  _ → \\_
+R11. PDFLATEX ONLY — DO NOT use \\usepackage{{fontspec}} or \\setmainfont (requires XeLaTeX).
+    Use only: geometry, xcolor, enumitem, hyperref packages.
+
+════════════════════════════════════════════════════
+BLOCK 2 — SOURCE DATA (copy this exactly, do not invent)
+════════════════════════════════════════════════════
+
+{target}
 
 {data_summary}
 
-TASK: Generate a COMPLETE, COMPILABLE LaTeX resume using the data above.
+════════════════════════════════════════════════════
+BLOCK 3 — STYLE AND FORMAT INSTRUCTIONS
+════════════════════════════════════════════════════
 
-CRITICAL REQUIREMENTS:
-1. Generate ONLY the LaTeX code — no explanations, no markdown, no code blocks
-2. Start with \\documentclass and end with \\end{{document}}
-3. Use the EXACT formatting rules specified above
-4. Include ALL relevant content from the data — do not skip sections
-5. Fit everything on ONE PAGE by adjusting spacing if needed
-6. Escape all special characters: & → \\&, % → \\%, $ → \\$, # → \\#, _ → \\_
-7. Technologies lines in projects go INSIDE the itemize as \\item \\textbf{{Technologies:}} ...
-8. Use the professional color scheme: name color #1a1a2e, section color #16213e
-9. Make it ATS-friendly — no tables for content, no complex columns in body
-10. Every bullet must have an action verb and a metric
+Candidate type: {candidate_type}
+{candidate_rules}
 
-Generate the complete LaTeX code now:
+Template style:
+{template_config['style_rules']}
+
+════════════════════════════════════════════════════
+FINAL REMINDER — CHECK BEFORE OUTPUTTING:
+════════════════════════════════════════════════════
+Before writing your output, verify:
+✓ GPA matches source EXACTLY
+✓ LinkedIn/GitHub are copied from source (real URL or placeholder, not invented)
+✓ No metric was invented (all numbers came from source data)
+✓ All sections present (Education, Skills, Experience, Projects, Leadership)
+✓ All skills categories present
+✓ ALL PROJECTS present (count them: Job Application Tracker, TrueSight, Sentiment Analysis, etc)
+✓ Compressed to fit close to 1 page (but did NOT remove projects to achieve this)
+
+Now generate ONLY the complete LaTeX code.
+Start with \\documentclass — end with \\end{{document}}.
+No markdown, no explanations, no code blocks.
 """
-    return prompt.strip()
 
 
 def call_ollama(prompt: str, system: str) -> str:

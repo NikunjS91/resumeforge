@@ -5,6 +5,7 @@ import subprocess
 import logging
 import shutil
 from pathlib import Path
+from .spacing_normalizer import normalize_spacing
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,10 @@ def compile_latex(tex_content: str, output_stem: str) -> str:
             "pdflatex not found. Install with: brew install basictex\n"
             "Then add to PATH: export PATH=$PATH:/Library/TeX/texbin"
         )
+
+    # ── Normalize spacing before compilation ─────────────────────────────────
+    tex_content = normalize_spacing(tex_content)
+    logger.info(f"Spacing normalized for output: {output_stem}")
 
     tex_path = EXPORT_DIR / f"{output_stem}.tex"
     pdf_path = EXPORT_DIR / f"{output_stem}.pdf"
