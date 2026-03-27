@@ -19,6 +19,8 @@ from routers.auth import get_current_user
 from modules.export.latex_generator import generate_latex_stage1, build_data_summary
 from modules.export.latex_reviewer import review_latex_stage2
 from modules.export.latex_compiler import compile_latex
+from modules.export.latex_surgeon import surgical_tailor
+from modules.export.spacing_normalizer import normalize_spacing
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/export", tags=["PDF Exporter"])
@@ -148,54 +150,83 @@ def export_pdf(
         except Exception:
             pass
 
-    # ── 5. Stage 1 — Generate LaTeX ──────────────────────────────────────────────
-    try:
-        latex_stage1 = generate_latex_stage1(
-            sections=sections_data,
-            job_title=job_title,
-            company_name=company_name,
-            required_skills=required_skills,
-            nicetohave_skills=nicetohave_skills,
-            improvement_notes=improvement_notes,
-            is_tailored=is_tailored,
-            provider="nvidia" if os.getenv('NVIDIA_API_KEY') else "ollama",
-            template=request.template or "classic"
-        )
-        logger.info(f"Stage 1 LaTeX generated: {len(latex_stage1)} chars")
-    except Exception as e:
-        logger.error(f"Stage 1 generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"LaTeX generation failed: {e}")
+    # ── 5. Check for master LaTeX ───────────────────────────────────────────────
+    resume_for_master = db.query(Resume).filter(
+        Resume.id == (session.resume_id if request.session_id else request.resume_id)
+    ).first()
 
-    # ── 6. Stage 2 — Review and Fix ──────────────────────────────────────────────
-    try:
-        original_data = build_data_summary(sections_data)
-        latex_final = review_latex_stage2(
-            latex_code=latex_stage1,
-            original_data=original_data,
-            provider="nvidia" if os.getenv('NVIDIA_API_KEY') else "ollama"
-        )
-        logger.info(f"Stage 2 reviewed LaTeX: {len(latex_final)} chars")
-    except Exception as e:
-        logger.warning(f"Stage 2 review failed, using Stage 1 output: {e}")
-        latex_final = latex_stage1
+    has_master = bool(resume_for_master and resume_for_master.master_latex)
+    logger.info(f"Master LaTeX available: {has_master}")
 
-    # ── 7. Compile to PDF ────────────────────────────────────────────────────────
-    try:
-        pdf_path = compile_latex(latex_final, output_stem)
-    except RuntimeError as e:
-        # If compilation fails, try Stage 1 output directly
-        logger.warning(f"Compilation of Stage 2 output failed, trying Stage 1: {e}")
+    if has_master:
+        # ── SURGICAL PATH: minimal changes to master LaTeX ────────────────────────
+        logger.info("Using surgical tailoring on master LaTeX")
         try:
-            pdf_path = compile_latex(latex_stage1, output_stem + "_s1")
-        except RuntimeError as e2:
-            raise HTTPException(status_code=500, detail=f"PDF compilation failed: {e2}")
+            latex_final = surgical_tailor(
+                master_latex=resume_for_master.master_latex,
+                job_title=job_title,
+                company_name=company_name,
+                required_skills=required_skills,
+                nicetohave_skills=nicetohave_skills,
+                provider="nvidia" if os.getenv('NVIDIA_API_KEY') else "ollama"
+            )
+            logger.info("Surgical tailoring complete")
+        except Exception as e:
+            logger.warning(f"Surgical tailor failed, using master as-is: {e}")
+            latex_final = resume_for_master.master_latex
 
-    # ── 8. Save pdf_path to DB ────────────────────────────────────────────────
+    else:
+        # ── GENERATION PATH: original 2-stage LLM generation ─────────────────────
+        logger.info("No master LaTeX — using full generation pipeline")
+        try:
+            latex_stage1 = generate_latex_stage1(
+                sections=sections_data,
+                job_title=job_title,
+                company_name=company_name,
+                required_skills=required_skills,
+                nicetohave_skills=nicetohave_skills,
+                improvement_notes=improvement_notes,
+                is_tailored=is_tailored,
+                provider="nvidia" if os.getenv('NVIDIA_API_KEY') else "ollama",
+                template=request.template or "classic"
+            )
+            logger.info(f"Stage 1 LaTeX generated: {len(latex_stage1)} chars")
+        except Exception as e:
+            logger.error(f"Stage 1 generation failed: {e}")
+            raise HTTPException(status_code=500, detail=f"LaTeX generation failed: {e}")
+
+        try:
+            original_data = build_data_summary(sections_data)
+            latex_final = review_latex_stage2(
+                latex_code=latex_stage1,
+                original_data=original_data,
+                provider="nvidia" if os.getenv('NVIDIA_API_KEY') else "ollama"
+            )
+            logger.info(f"Stage 2 reviewed LaTeX: {len(latex_final)} chars")
+        except Exception as e:
+            logger.warning(f"Stage 2 review failed, using Stage 1 output: {e}")
+            latex_final = latex_stage1
+
+    # ── 6. Normalize spacing and compile to PDF ──────────────────────────────────
+    try:
+        pdf_path = compile_latex(normalize_spacing(latex_final), output_stem)
+    except RuntimeError as e:
+        # If compilation fails and we have stage1, try that
+        if not has_master and 'latex_stage1' in locals():
+            logger.warning(f"Compilation failed, trying Stage 1: {e}")
+            try:
+                pdf_path = compile_latex(normalize_spacing(latex_stage1), output_stem + "_s1")
+            except RuntimeError as e2:
+                raise HTTPException(status_code=500, detail=f"PDF compilation failed: {e2}")
+        else:
+            raise HTTPException(status_code=500, detail=f"PDF compilation failed: {e}")
+
+    # ── 7. Save pdf_path to DB ────────────────────────────────────────────────
     if session:
         session.pdf_path = pdf_path
         db.commit()
 
-    # ── 9. Return PDF ─────────────────────────────────────────────────────────
+    # ── 8. Return PDF ─────────────────────────────────────────────────────────
     download_name = f"ResumeForge_{resume_name}.pdf"
     return FileResponse(
         path=pdf_path,
@@ -203,3 +234,68 @@ def export_pdf(
         filename=download_name,
         headers={"Content-Disposition": f'attachment; filename="{download_name}"'}
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Master LaTeX endpoints for surgical tailoring
+# ══════════════════════════════════════════════════════════════════════════════
+
+class MasterLatexRequest(BaseModel):
+    resume_id: int
+    latex_content: str   # the full .tex file content
+
+
+@router.post("/master-latex")
+def upload_master_latex(
+    request: MasterLatexRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Store a perfect LaTeX file as the master resume for a given resume_id.
+    This becomes the source of truth for all future PDF exports.
+    """
+    resume = db.query(Resume).filter(
+        Resume.id == request.resume_id,
+        Resume.user_id == current_user.id
+    ).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    # Validate it's real LaTeX
+    if '\\documentclass' not in request.latex_content:
+        raise HTTPException(
+            status_code=422,
+            detail="Content does not appear to be valid LaTeX (missing \\documentclass)"
+        )
+
+    resume.master_latex = request.latex_content
+    db.commit()
+
+    return {
+        "resume_id": resume.id,
+        "message": "Master LaTeX stored successfully",
+        "latex_length": len(request.latex_content)
+    }
+
+
+@router.get("/master-latex/{resume_id}")
+def get_master_latex(
+    resume_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Check if a master LaTeX exists for a resume."""
+    resume = db.query(Resume).filter(
+        Resume.id == resume_id,
+        Resume.user_id == current_user.id
+    ).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    return {
+        "resume_id": resume_id,
+        "has_master_latex": bool(resume.master_latex),
+        "latex_length": len(resume.master_latex) if resume.master_latex else 0
+    }
+
