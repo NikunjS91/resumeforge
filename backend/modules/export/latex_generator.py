@@ -121,39 +121,86 @@ def build_template_fill_prompt(
 
     return f"""Fill in the LaTeX resume template below. Replace every LATEX_* placeholder with the correct value from the source data.
 
-CRITICAL ACCURACY RULES:
-R1. GPA: copy EXACTLY — if source says 3.84, write 3.84. Never round or change.
-R2. URLs: copy EXACTLY — if source has https://linkedin.com/in/nikunj-shetye, use that full URL.
-    If source has placeholder text like "LinkedIn URL", copy that text as the URL value.
-R3. METRICS: copy ALL numbers EXACTLY — 35%, 40%, 45%, 60%, 99.9%, 76%, etc.
-R4. Never invent numbers, project names, company names, or URLs.
-R5. Include ALL skills categories, ALL projects, ALL experience from source.
+════════════════════════════════════════════
+ACCURACY RULES (violations = failure):
+════════════════════════════════════════════
+R1. GPA: copy EXACTLY — if source says 3.84, write 3.84. If source says 3.5, write 3.5. Never change.
+R2. URLs: copy EXACTLY from source. If source has "LinkedIn URL" as placeholder text, use that text as the href value.
+R3. METRICS: copy ALL percentages and numbers EXACTLY — 35%, 40%, 76%, 85%, 20%, etc.
+R4. Never invent numbers, dates, company names, project names, or URLs.
 
+════════════════════════════════════════════
+COMPLETENESS RULES (missing content = failure):
+════════════════════════════════════════════
+C1. SKILLS: count the skill categories in source data — include EVERY SINGLE ONE as its own row.
+    Do NOT merge categories. Do NOT drop categories. If source has 10 categories, output 10 rows.
+C2. PROJECTS: include ALL projects from source. Include ALL bullets from source (up to 6 per project).
+    Keep specific metrics ("76% accuracy", "85% accuracy", "20% attrition reduction") — these are real.
+C3. EXPERIENCE: include ALL bullets for each role (up to 6 per role).
+C4. VOLUNTEER WORK: if source has volunteer work or a volunteer section, include it in LATEX_LEADERSHIP_BLOCK.
+C5. LEADERSHIP: if source has a leadership/clubs section, include it in LATEX_LEADERSHIP_BLOCK alongside volunteer work.
+
+════════════════════════════════════════════
 PLACEHOLDER GUIDE:
-- LATEX_FULL_NAME → candidate's full name only (no pronouns)
-- LATEX_LOCATION → city and state (e.g., New York, NY)
-- LATEX_PHONE_RAW → digits only (e.g., 5513627616)
+════════════════════════════════════════════
+- LATEX_FULL_NAME → candidate's full name only (no pronouns, no (He/Him))
+- LATEX_LOCATION → city and state only (e.g., New York, NY)
+- LATEX_PHONE_RAW → digits only, no formatting (e.g., 5513627616)
 - LATEX_PHONE_DISPLAY → formatted phone (e.g., (551)-362-7616)
 - LATEX_EMAIL → email address
-- LATEX_LINKEDIN_URL → full LinkedIn URL copied from source
-- LATEX_GITHUB_URL → full GitHub URL copied from source
+- LATEX_LINKEDIN_URL → exact LinkedIn URL or placeholder text from source
+- LATEX_GITHUB_URL → exact GitHub URL or placeholder text from source
 - LATEX_PDF_TITLE → "Resume - Full Name"
 - LATEX_AUTHOR_NAME → Full Name
-- LATEX_EXPERIENCE_BLOCK → use \\resumesubheading{{Company}}{{Dates}}{{Title}}{{Location}} then \\begin{{itemize}}...\\end{{itemize}}; max 4 bullets for current role, 2-3 for older
-- LATEX_SKILLS_ROWS → one row per category: \\textbf{{Category}} & item1, item2, item3 \\\\
-- LATEX_PROJECTS_BLOCK → \\textbf{{Project Name}} \\hfill {{(tech stack)}} then \\begin{{itemize}}...\\end{{itemize}}; max 3 bullets per project; include ALL projects
-- LATEX_EDUCATION_BLOCK → \\resumesubheading{{School}}{{Dates}}{{Degree, GPA: X.XX/4.0}}{{Location}}
-- LATEX_LEADERSHIP_BLOCK → activities/clubs in same format as experience, or a single \\vspace{{0pt}} if no leadership data
 
+- LATEX_EXPERIENCE_BLOCK →
+    For each role: \\resumesubheading{{Company}}{{Dates}}{{Title}}{{Location}}
+    followed by \\begin{{itemize}} with ALL bullets (up to 6) \\end{{itemize}}
+    Include volunteer/internship roles here ONLY if they are work experience (not in volunteer section).
+
+- LATEX_SKILLS_ROWS →
+    ONE ROW PER CATEGORY. Format: \\textbf{{Category Name}} & skill1, skill2, skill3, skill4 \\\\
+    Count categories in source and generate EXACTLY that many rows.
+    Example if source has Programming Languages, Data Science Libraries, Cloud Platforms, DevOps:
+    \\textbf{{Programming Languages}} & Python, R, SQL \\\\
+    \\textbf{{Data Science Libraries}} & NumPy, Pandas, Scikit-learn, TensorFlow \\\\
+    \\textbf{{Cloud Platforms}} & AWS (EC2, S3, Lambda), Google Cloud \\\\
+    \\textbf{{DevOps Tools}} & Docker, Kubernetes, Terraform \\\\
+
+- LATEX_PROJECTS_BLOCK →
+    For each project: \\textbf{{Project Name}} \\hfill {{(Technologies Used)}}
+    followed by \\begin{{itemize}} with ALL bullets from source \\end{{itemize}}
+    Include ALL projects. Keep ALL metrics (accuracy %, attrition reduction %, etc.)
+
+- LATEX_EDUCATION_BLOCK →
+    For each school: \\resumesubheading{{School Full Name}}{{Graduation Date}}{{Degree — GPA: X.XX/scale}}{{City, Country}}
+    Include BOTH schools if source has two.
+
+- LATEX_COURSEWORK_BLOCK →
+    IF source has a "Relevant Coursework" or "Coursework" section:
+      \\resumesection{{Relevant Coursework}}
+      followed by course names as a compact comma-separated paragraph or pipe-separated list.
+    IF source has NO coursework section: leave this placeholder as an EMPTY STRING (delete the token entirely).
+
+- LATEX_LEADERSHIP_BLOCK →
+    IF source has leadership clubs OR volunteer work:
+      \\resumesection{{Leadership \\& Activities}}
+      followed by ALL volunteer entries AND all leadership club entries using \\resumesubheading + \\begin{{itemize}}
+      Include BOTH volunteer work section AND leadership section from source here.
+    IF source has NEITHER: leave this placeholder as an EMPTY STRING (delete the token entirely).
+
+════════════════════════════════════════════
 FORMAT RULES:
-- Escape special chars: & → \\&, % → \\%, $ → \\$, # → \\#, _ → \\_
-- Bullets start with action verbs (Led, Built, Deployed, Reduced, Increased, etc.)
+════════════════════════════════════════════
+- Escape: & → \\&, % → \\%, $ → \\$, # → \\#, _ → \\_
+- Bullet points start with action verbs (Led, Built, Deployed, Reduced, Increased, Developed, etc.)
 - Do NOT use \\begin{{itemize}} for the contact header — it is already structured in the template
+- Do NOT add section headers outside the designated blocks
 
 {target}
 
 ════════════════════════════
-SOURCE DATA (copy values exactly — do not invent):
+SOURCE DATA (copy values exactly — do not invent or omit):
 ════════════════════════════
 {data_summary}
 
