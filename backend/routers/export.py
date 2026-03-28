@@ -146,7 +146,11 @@ def export_pdf(
             except Exception:
                 pass
         try:
-            improvement_notes = json.loads(session.improvement_notes_json or '[]')
+            # improvement_notes are stored inside tailored_json, not a separate field
+            tailored_data = json.loads(session.tailored_json or "{}")
+            improvement_notes = tailored_data.get("improvement_notes", [])
+            if not isinstance(improvement_notes, list):
+                improvement_notes = []
         except Exception:
             pass
 
@@ -209,13 +213,13 @@ def export_pdf(
 
     # ── 6. Normalize spacing and compile to PDF ──────────────────────────────────
     try:
-        pdf_path = compile_latex(normalize_spacing(latex_final), output_stem)
+        pdf_path = compile_latex(latex_final, output_stem)
     except RuntimeError as e:
         # If compilation fails and we have stage1, try that
         if not has_master and 'latex_stage1' in locals():
             logger.warning(f"Compilation failed, trying Stage 1: {e}")
             try:
-                pdf_path = compile_latex(normalize_spacing(latex_stage1), output_stem + "_s1")
+                pdf_path = compile_latex(latex_stage1, output_stem + "_s1")
             except RuntimeError as e2:
                 raise HTTPException(status_code=500, detail=f"PDF compilation failed: {e2}")
         else:
