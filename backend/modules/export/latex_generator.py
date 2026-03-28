@@ -23,6 +23,24 @@ NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 NVIDIA_MODEL = "meta/llama-3.3-70b-instruct"
 GENERATION_TIMEOUT = 300  # 5 minutes
 
+TEMPLATES_DIR = Path(__file__).parent.parent.parent / "templates"
+
+_TEMPLATE_FILES = {
+    "classic": "professional.tex",
+    "minimal": "minimal.tex",
+    "modern":  "modern.tex",
+}
+
+
+def _load_template(template_name: str) -> str:
+    """Load a template file. Returns empty string if not found."""
+    fname = _TEMPLATE_FILES.get(template_name, "professional.tex")
+    path = TEMPLATES_DIR / fname
+    if path.exists():
+        return path.read_text()
+    logger.warning(f"Template file not found: {path}")
+    return ""
+
 
 def detect_candidate_type(sections: list) -> str:
     """
@@ -86,6 +104,66 @@ def build_data_summary(
             lines.append(content)
 
     return '\n'.join(lines)
+
+
+def build_template_fill_prompt(
+    template_content: str,
+    data_summary: str,
+    candidate_type: str,
+    job_title: str = "",
+    company_name: str = "",
+) -> str:
+    """
+    Build a prompt that asks the LLM to fill in LATEX_* placeholders in the template.
+    The LLM never touches the document structure — only replaces placeholder tokens.
+    """
+    target = f"Target role: {job_title} at {company_name}" if job_title else ""
+
+    return f"""Fill in the LaTeX resume template below. Replace every LATEX_* placeholder with the correct value from the source data.
+
+CRITICAL ACCURACY RULES:
+R1. GPA: copy EXACTLY — if source says 3.84, write 3.84. Never round or change.
+R2. URLs: copy EXACTLY — if source has https://linkedin.com/in/nikunj-shetye, use that full URL.
+    If source has placeholder text like "LinkedIn URL", copy that text as the URL value.
+R3. METRICS: copy ALL numbers EXACTLY — 35%, 40%, 45%, 60%, 99.9%, 76%, etc.
+R4. Never invent numbers, project names, company names, or URLs.
+R5. Include ALL skills categories, ALL projects, ALL experience from source.
+
+PLACEHOLDER GUIDE:
+- LATEX_FULL_NAME → candidate's full name only (no pronouns)
+- LATEX_LOCATION → city and state (e.g., New York, NY)
+- LATEX_PHONE_RAW → digits only (e.g., 5513627616)
+- LATEX_PHONE_DISPLAY → formatted phone (e.g., (551)-362-7616)
+- LATEX_EMAIL → email address
+- LATEX_LINKEDIN_URL → full LinkedIn URL copied from source
+- LATEX_GITHUB_URL → full GitHub URL copied from source
+- LATEX_PDF_TITLE → "Resume - Full Name"
+- LATEX_AUTHOR_NAME → Full Name
+- LATEX_EXPERIENCE_BLOCK → use \\resumesubheading{{Company}}{{Dates}}{{Title}}{{Location}} then \\begin{{itemize}}...\\end{{itemize}}; max 4 bullets for current role, 2-3 for older
+- LATEX_SKILLS_ROWS → one row per category: \\textbf{{Category}} & item1, item2, item3 \\\\
+- LATEX_PROJECTS_BLOCK → \\textbf{{Project Name}} \\hfill {{(tech stack)}} then \\begin{{itemize}}...\\end{{itemize}}; max 3 bullets per project; include ALL projects
+- LATEX_EDUCATION_BLOCK → \\resumesubheading{{School}}{{Dates}}{{Degree, GPA: X.XX/4.0}}{{Location}}
+- LATEX_LEADERSHIP_BLOCK → activities/clubs in same format as experience, or a single \\vspace{{0pt}} if no leadership data
+
+FORMAT RULES:
+- Escape special chars: & → \\&, % → \\%, $ → \\$, # → \\#, _ → \\_
+- Bullets start with action verbs (Led, Built, Deployed, Reduced, Increased, etc.)
+- Do NOT use \\begin{{itemize}} for the contact header — it is already structured in the template
+
+{target}
+
+════════════════════════════
+SOURCE DATA (copy values exactly — do not invent):
+════════════════════════════
+{data_summary}
+
+════════════════════════════
+TEMPLATE (replace LATEX_* tokens only — do NOT change any LaTeX commands or document structure):
+════════════════════════════
+{template_content}
+
+Return ONLY the complete filled LaTeX. Start with \\documentclass, end with \\end{{document}}. No markdown, no explanations.
+"""
 
 
 def build_stage1_prompt(
@@ -290,13 +368,27 @@ def generate_latex_stage1(
         is_tailored=is_tailored
     )
 
-    prompt = build_stage1_prompt(
-        data_summary=data_summary,
-        candidate_type=candidate_type,
-        job_title=job_title,
-        company_name=company_name,
-        template=template
-    )
+    # ── Template-fill approach (primary): LLM fills LATEX_* placeholders only ──
+    template_content = _load_template(template)
+    if template_content:
+        logger.info(f"Stage 1: Template-fill approach with {provider} (template: {template})")
+        prompt = build_template_fill_prompt(
+            template_content=template_content,
+            data_summary=data_summary,
+            candidate_type=candidate_type,
+            job_title=job_title,
+            company_name=company_name,
+        )
+    else:
+        # ── Fallback: scratch generation if template not found ──────────────────
+        logger.warning(f"Template '{template}' not found — falling back to scratch generation")
+        prompt = build_stage1_prompt(
+            data_summary=data_summary,
+            candidate_type=candidate_type,
+            job_title=job_title,
+            company_name=company_name,
+            template=template
+        )
 
     logger.info(f"Stage 1: Generating LaTeX with {provider}...")
 
@@ -306,5 +398,12 @@ def generate_latex_stage1(
         raw = call_ollama(prompt, STAGE_1_SYSTEM_PROMPT)
 
     latex = extract_latex(raw)
+
+    # Validate the template placeholders were filled (not left as LATEX_*)
+    unfilled = [p for p in ["LATEX_FULL_NAME", "LATEX_EMAIL", "LATEX_EDUCATION_BLOCK"]
+                if p in latex]
+    if unfilled:
+        logger.warning(f"Stage 1: {len(unfilled)} unfilled placeholder(s): {unfilled}")
+
     logger.info(f"Stage 1 complete: {len(latex)} chars generated")
     return latex
