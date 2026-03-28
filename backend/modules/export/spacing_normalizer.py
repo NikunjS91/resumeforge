@@ -45,13 +45,9 @@ def normalize_spacing(latex: str) -> str:
     latex = re.sub(r'\\vspace\{([^}]+)\}', _cap_vspace, latex)
 
     # 3 — Tighten geometry margins (balanced: 0.35in top/bottom per resume_rules.py spirit)
+    # Single pattern covers all \usepackage[any options]{geometry} variants
     latex = re.sub(
-        r'\\usepackage\[[^\]]*geometry[^\]]*\]\{geometry\}',
-        r'\\usepackage[top=0.35in,bottom=0.35in,left=0.4in,right=0.4in]{geometry}',
-        latex
-    )
-    latex = re.sub(
-        r'\\usepackage\[margin=[^\]]+\]\{geometry\}',
+        r'\\usepackage\[[^\]]+\]\{geometry\}',
         r'\\usepackage[top=0.35in,bottom=0.35in,left=0.4in,right=0.4in]{geometry}',
         latex
     )
