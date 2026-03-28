@@ -1,4 +1,5 @@
 import json as json_lib
+import re as _re
 import requests
 import logging
 
@@ -23,9 +24,7 @@ SECTION_KEYWORDS = {
                        "community", "involvement", "clubs", "organizations",
                        "leadership & activities", "activities & leadership",
                        "leadership and activities",
-                       "activities and leadership",
-                       "awards",
-                       "honors"],
+                       "activities and leadership"],
 }
 
 SECTION_TYPES = list(SECTION_KEYWORDS.keys())
@@ -72,10 +71,10 @@ def classify_line(line: str) -> tuple:
         if signal in lower:
             return None, 0.0
 
-    # Keyword match — high confidence
+    # Keyword match — high confidence (word-boundary to avoid substring false positives)
     for section_type, keywords in SECTION_KEYWORDS.items():
         for kw in keywords:
-            if kw in lower:
+            if _re.search(r'\b' + _re.escape(kw) + r'\b', lower):
                 return section_type, 1.0
 
     # ALL CAPS line with no content signals — medium confidence
