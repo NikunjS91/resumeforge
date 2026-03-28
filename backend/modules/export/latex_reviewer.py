@@ -18,69 +18,96 @@ REVIEW_TIMEOUT = 180  # 3 minutes
 
 
 REVIEW_CHECKLIST = """
-REVIEW CHECKLIST — Check each item and fix if needed:
+REVIEW CHECKLIST — Fix every issue found:
 
-CONTENT CHECKS:
-□ Does every bullet start with a strong action verb?
-□ Does every bullet have at least one metric/number?
-□ Are all special characters escaped? (& → \\&, % → \\%, $ → \\$)
-□ Is contact info (email, phone, LinkedIn) ONLY in the header?
-□ Are Technologies lines inside projects in itemize, not as section headers?
-□ Is everything on ONE PAGE? (check \\linespread and spacing)
+ANTI-HALLUCINATION CHECKS (HIGHEST PRIORITY):
+□ Are ALL numbers and percentages present verbatim in the original source data?
+  - If ANY metric was not in the source data, REMOVE it immediately
+  - Replace with action-only bullet: "Led migration to AWS" not "Led migration, reducing costs by 35%"
+□ Is the GPA EXACTLY as it appears in the source? (e.g., 3.84 not 3.5 or 3.8)
+□ Are LinkedIn and GitHub URLs copied exactly from source? (real URLs, not placeholders)
+□ Are all company names, job titles, and dates copied exactly from source?
+
+CONTENT COMPLETENESS CHECKS:
+□ Are ALL skills categories from the source present? (none dropped)
+□ Are ALL projects from the source present? (none dropped)
+□ Are ALL sections present? (Education, Skills, Experience, Projects, Leadership if in source)
+□ Is the experience section present with the correct company name and role title?
 
 LATEX SYNTAX CHECKS:
 □ Does \\documentclass appear at the start?
 □ Does \\end{document} appear at the end?
 □ Are all \\begin{} matched with \\end{}?
+□ Are all special characters escaped? (& → \\&, % → \\%, $ → \\$, # → \\#, _ → \\_)
 □ Are all braces { } balanced?
-□ Is \\usepackage{enumitem} included?
-□ Is \\usepackage{xcolor} included?
-□ Is \\usepackage{hyperref} included?
-□ Is \\usepackage{geometry} included?
 
 FORMATTING CHECKS:
-□ Is the name in \\Huge\\textbf and centered?
-□ Do section headers use \\large\\textbf\\uppercase with \\hrule?
+□ Does the resume fit on ONE PAGE?
+□ Is the name in \\Huge or \\LARGE\\textbf centered?
+□ Are section headers using \\large\\textbf with \\hrule?
 □ Are skills in tabular format (not bullet list)?
 □ Are dates right-aligned using \\hfill?
-□ Is line spacing set to 0.88?
 
-QUALITY CHECKS:
-□ Is everything truthful and based on the provided data?
-□ Are job description keywords from the target role included?
-□ Is the content specific enough to pass a recruiter's 6-second scan?
+IF ANYTHING IS WRONG: Fix it and return the corrected LaTeX.
+IF HALLUCINATED METRICS FOUND: Remove them — do not keep or replace with other invented numbers.
 """
 
 
 def build_review_prompt(latex_code: str, original_data: str = "") -> str:
-    """Build the Stage 2 review prompt."""
-    return f"""
-You are reviewing a generated LaTeX resume. Your job is to:
-1. Check every item in the checklist below
-2. Fix ALL issues you find
-3. Return ONLY the corrected, complete LaTeX code
+    """Build the Stage 2 review prompt with source data for fact-checking."""
 
-{UNIVERSAL_RULES}
+    source_section = ""
+    if original_data:
+        source_section = f"""
+════════════════════════════════════════════
+ORIGINAL SOURCE DATA (fact-check against this)
+════════════════════════════════════════════
+{original_data[:3000]}
+════════════════════════════════════════════
+"""
 
-{FORMATTING_RULES}
+    return f"""Review the LaTeX resume below. Fix every issue.
 
-{REVIEW_CHECKLIST}
+{source_section}
 
-ORIGINAL RESUME DATA (for reference, to ensure nothing was lost):
-{original_data[:2000] if original_data else "Not provided"}
+WHAT TO CHECK AND FIX:
+
+PRIORITY 1 — FABRICATED DATA (most critical):
+- Compare every number/percentage in the LaTeX against the source data above
+- If a metric appears in LaTeX but NOT in source data: DELETE it from the bullet
+- Example: If LaTeX has "25% increase in sales" but source never mentions this → remove it
+- Example: If source has "40% reduction" but LaTeX changed it to "35%" → fix to 40%
+- GPA: must match source exactly (e.g., 3.84 not 3.5)
+- URLs: must be copied from source (real URLs or placeholder text — not invented)
+
+PRIORITY 2 — MISSING CONTENT:
+- All sections present? (Education, Skills, Experience, Projects, Leadership)
+- All skills categories from source present?
+- All projects from source present?
+- If anything is missing: add it back, reducing spacing to fit 1 page
+
+PRIORITY 3 — LATEX SYNTAX:
+- All special chars escaped: & → \\& % → \\% $ → \\$ # → \\# _ → \\_
+- All \\begin{{}} matched with \\end{{}}
+- \\documentclass at start, \\end{{document}} at end
+
+PRIORITY 4 — ONE PAGE (critical):
+- Must fit on exactly 1 page
+- Check total bullet count: if more than 18 bullets total, reduce
+  Current/main role: max 4 bullets
+  Older roles: max 2 bullets
+  Each project: max 3 bullets
+  Leadership entries: max 2 bullets each
+- After reducing bullets, check \\vspace values — all should be \\vspace{{1pt}}
+- Check \\linespread — should be 0.82 or less
+- If still too long: shorten individual bullet text (remove filler words)
+- NEVER remove whole sections or whole projects
 
 LATEX CODE TO REVIEW:
 {latex_code}
 
-CRITICAL INSTRUCTIONS:
-- Return ONLY the corrected LaTeX code
-- Start with \\documentclass and end with \\end{{document}}
-- No explanations, no markdown, no code blocks
-- Fix every issue found in the checklist
-- Do NOT change factual content — only improve formatting and fix errors
-- If the code is already correct, return it unchanged
-
-Return the corrected LaTeX code:
+Return ONLY the corrected complete LaTeX code.
+Start with \\documentclass — end with \\end{{document}}.
 """
 
 

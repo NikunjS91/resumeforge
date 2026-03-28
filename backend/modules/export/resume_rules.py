@@ -5,29 +5,54 @@ Based on industry best practices for ATS-optimized resumes.
 
 UNIVERSAL_RULES = """
 UNIVERSAL RESUME RULES (NON-NEGOTIABLE):
-1. ONE PAGE ONLY — fit everything on exactly one page
-2. Reverse chronological order — most recent experience/education first
-3. Every bullet point MUST start with a strong action verb (Led, Built, Architected, Deployed, Reduced, Increased, Designed, Implemented, Optimized, Managed, Spearheaded, Delivered)
-4. Quantify every bullet — include at least one number, percentage, or metric per bullet
-5. No personal pronouns (never use I, me, my, we, our)
-6. No "References available upon request"
-7. No photos, graphics, or decorative elements — ATS-safe only
-8. Mirror job description keywords EXACTLY — use their exact phrasing
-9. Never invent, exaggerate, or fabricate metrics or experiences — 100% truthful
-10. Contact info (name, email, phone, LinkedIn) ONLY in the header — never in body
+
+CONTENT INTEGRITY (MOST CRITICAL):
+1. ZERO HALLUCINATION — Never invent, fabricate, or estimate any metric, number, percentage,
+   or achievement. If a number does not appear verbatim in the source data, DO NOT include it.
+   - WRONG: "Reduced deployment time by 40%" (if source says nothing about deployment time)
+   - RIGHT: "Reduced deployment time" (describe without fabricating a number)
+   - WRONG: "Achieved 25% increase in sales" (invented)
+   - RIGHT: "Reduced manual work by 40%" (if source says exactly this)
+2. PRESERVE EXACT NUMBERS — When source data contains a metric, copy it EXACTLY:
+   - If source says "40%", write "40%" — not "approximately 40%" or "~35%"
+   - If source says "GPA: 3.84", write "3.84" — never round to 3.5 or 3.8
+   - If source says "10K+ users", write "10K+ users" — not "thousands of users"
+3. PRESERVE ALL CONTACT DATA — Copy name, email, phone, LinkedIn, GitHub EXACTLY from source:
+   - If source has a real LinkedIn URL, use it
+   - If source has placeholder text like "LinkedIn URL", flag it but still copy it
+   - Never replace real URLs with placeholders
+
+STRUCTURE RULES:
+4. ONE PAGE ONLY — Fit everything on exactly one page using spacing, not content removal
+5. Reverse chronological order — most recent experience/education first
+6. Every bullet MUST start with a strong action verb (Led, Built, Deployed, Architected,
+   Reduced, Increased, Designed, Implemented, Optimized, Managed, Delivered)
+7. No personal pronouns (never use I, me, my, we, our)
+
+CONTENT PRESERVATION:
+8. Include ALL sections from source — never drop entire sections
+9. Include ALL skills categories — reduce bullets per category if needed but keep all categories
+10. Include ALL projects — reduce bullets per project if needed but keep all projects
+11. If content does not fit on one page, reduce SPACING and BULLETS per item — not whole sections
+12. Mirror job description keywords EXACTLY where present in source data
 """
 
 EXPERIENCED_RULES = """
 RULES FOR EXPERIENCED CANDIDATES (1+ years work experience):
 1. Professional Experience section comes BEFORE Education
 2. No "Objective" statement — omit it entirely
-3. Education section goes at the BOTTOM with minimal detail (degree, school, year, GPA only)
-4. Focus on IMPACT and ROI — not duties or responsibilities
-5. Use the formula: Action Verb + What You Did + Measurable Result
-   - BAD: "Managed infrastructure"
-   - GOOD: "Architected AWS infrastructure serving 10K+ users, reducing operational costs by 35%"
-6. Skills grouped by category: Cloud & AWS, DevOps & CI/CD, Backend, Databases, etc.
-7. Current/most recent role: 5-6 bullets. Older roles: 3-4 bullets.
+3. Education section goes at the BOTTOM — include degree, school, GPA (EXACT value), graduation date
+4. Focus on IMPACT and ROI — use the formula: Action Verb + What + Measurable Result (if in source)
+5. Current/most recent role: 4-5 bullets max. Older roles: 2-3 bullets max.
+6. Skills: keep ALL categories from source — reduce rows per category before dropping categories
+7. Projects: keep ALL projects from source — reduce to 3 bullets each if space is tight
+
+ONE-PAGE FITTING STRATEGY (use in this order, stop when it fits):
+   Step 1: Reduce line spacing (use \\vspace{1pt} between sections)
+   Step 2: Reduce bullets per role (current role: 4 max, older: 2 max)
+   Step 3: Reduce bullets per project (3 max each)
+   Step 4: Shorten individual bullet text (keep all key facts, remove filler words)
+   NEVER: Drop entire sections or entire projects to fit the page
 """
 
 FRESHER_RULES = """
@@ -91,18 +116,33 @@ SECTION_ORDER_FRESHER = [
     "leadership",   # Leadership & Activities
 ]
 
-STAGE_1_SYSTEM_PROMPT = """You are an expert resume writer and LaTeX specialist. 
-Your job is to generate a complete, professional, ATS-optimized LaTeX resume.
-You have deep knowledge of what recruiters look for and how ATS systems work.
-You produce clean, compilable LaTeX code that renders to a beautiful 1-page resume.
+STAGE_1_SYSTEM_PROMPT = """You are a precise LaTeX resume generator with one absolute rule:
+ACCURACY FIRST. You never invent, fabricate, or modify any data from the source.
 
-CRITICAL CONSTRAINT: The output MUST compile to exactly ONE PAGE.
-Aggressively cut content to fit. Fewer bullets is better than overflow."""
+Your job in order of priority:
+1. Copy all numbers, URLs, and metrics EXACTLY as they appear in source data
+2. Include ALL sections, skills categories, and projects from source data
+3. Format professionally in LaTeX
+4. Fit on exactly 1 page by adjusting spacing and bullet count — never by removing sections
 
-STAGE_2_SYSTEM_PROMPT = """You are a senior resume reviewer and LaTeX expert.
-Your job is to review a generated LaTeX resume and fix any issues.
-You check for rule compliance, LaTeX syntax errors, content quality, and formatting.
-You return the corrected, improved LaTeX code ready for compilation."""
+If you are ever unsure whether a metric is real or invented: OMIT the metric.
+Write the action without a number rather than risk fabrication.
+"""
+
+STAGE_2_SYSTEM_PROMPT = """You are a senior resume reviewer and LaTeX debugger.
+
+Your PRIMARY job is catching fabricated data. Check every number and metric in the
+LaTeX against the original source data provided. If ANY metric appears that was NOT
+in the source data, DELETE it — replace with the action without the number.
+
+Your SECONDARY job is completeness. Verify all sections, all skills categories,
+and all projects from the source are present. If any are missing, add them back.
+
+Your TERTIARY job is formatting. Fix LaTeX syntax errors, ensure 1-page fit,
+fix special character escaping.
+
+Return the corrected complete LaTeX. Nothing else.
+"""
 
 
 # ─── Template Definitions ─────────────────────────────────────────────────────

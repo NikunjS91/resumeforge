@@ -16,6 +16,7 @@ class Resume(Base):
     raw_text = Column(Text, nullable=False)                 # Full plain text extracted from file
     structured_json = Column(Text, nullable=False)          # JSON blob of all parsed sections
     llm_extras_json = Column(Text, nullable=True)           # LLM-detected extra sections beyond standard 7
+    master_latex = Column(Text, nullable=True)              # stores the perfect .tex source for surgical tailoring
     char_count = Column(Integer, nullable=False, default=0)
     page_count = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
