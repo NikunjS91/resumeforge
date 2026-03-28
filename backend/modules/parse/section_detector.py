@@ -14,6 +14,8 @@ SECTION_KEYWORDS = {
     "experience":     ["experience", "work experience", "employment", "work history",
                        "professional experience", "career history", "internship"],
     "education":      ["education", "academic", "qualification", "degree", "academics", "schooling"],
+    "coursework":     ["relevant coursework", "coursework", "courses taken", "academic courses",
+                       "related coursework", "key courses"],
     "skills":         ["skills", "technical skills", "core competencies", "technologies",
                        "expertise", "tech stack", "tools", "competencies"],
     "projects":       ["projects", "personal projects", "key projects",
