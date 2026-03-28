@@ -152,6 +152,7 @@ def score_ats(
         )
 
     # ── 6. Save to DB if session_id provided, else create new record ─
+    result_session_id = request.session_id
     if request.session_id and session:
         session.ats_score = result["ats_score"]
         session.matched_keywords_json = json.dumps(result["matched_keywords"])
@@ -177,6 +178,7 @@ def score_ats(
         db.add(new_session)
         db.commit()
         db.refresh(new_session)
+        result_session_id = new_session.id
         logger.info(f"Created score session {new_session.id}, ATS score={result['ats_score']}")
 
     # ── 7. Return response ───────────────────────────────────────────
@@ -187,7 +189,7 @@ def score_ats(
         "job_title":          job.job_title,
         "company_name":       job.company_name,
         "scoring_source":     scoring_source,
-        "session_id":         request.session_id,
+        "session_id":         result_session_id,
         "ats_score":          result["ats_score"],
         "match_rate":         result["match_rate"],
         "required_count":     result["required_count"],
