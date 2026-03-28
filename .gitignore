@@ -35,3 +35,15 @@ dist/
 # IDE
 .vscode/
 .idea/
+
+# Claude Code tools and reference repos (local only, not tracked)
+.claude-tools/
+.claude/cache/
+.claude/memory/
+
+# Claude Cache knowledge base (personal, local only)
+~/.claude/knowledge/
+
+# Agent coordination files (session-specific)
+agent-coordination.md
+.claude-session-*.md
