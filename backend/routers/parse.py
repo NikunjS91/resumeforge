@@ -103,7 +103,7 @@ async def upload_resume(
     db.commit()
     db.refresh(resume_record)
 
-    # ── 8. Return response ──────────────────────────────────
+    # ── 8. Return response ─────────────────────────────────
     return {
         "resume_id":     resume_record.id,
         "name":          resume_record.name,
@@ -118,6 +118,65 @@ async def upload_resume(
                 "content_text":   s["content_text"],
                 "position_index": s["position_index"],
                 "detected_by":    s["detected_by"],
+            }
+            for s in sections
+        ]
+    }
+
+
+@router.post("/reparse/{resume_id}")
+def reparse_resume(
+    resume_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Re-parse a previously uploaded resume using the current section_detector.
+    Useful when the parser is improved and existing DB sections are stale.
+    """
+    resume = db.query(Resume).filter(
+        Resume.id == resume_id,
+        Resume.user_id == current_user.id
+    ).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail=f"Resume {resume_id} not found.")
+
+    file_path = Path(resume.file_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=422, detail="Resume file not found on disk.")
+
+    # Re-extract and re-detect sections
+    extraction = extract(str(file_path), resume.file_format)
+    raw_text   = extraction["raw_text"]
+    sections   = detect_sections(raw_text)
+
+    # Delete old sections and insert fresh ones
+    db.query(ResumeSection).filter(ResumeSection.resume_id == resume_id).delete()
+    for sec in sections:
+        db.add(ResumeSection(
+            resume_id       = resume_id,
+            section_type    = sec["section_type"],
+            section_label   = sec["section_label"],
+            content_text    = sec["content_text"],
+            content_json    = json.dumps({"text": sec["content_text"]}),
+            position_index  = sec["position_index"],
+            formatting_json = json.dumps({"detected_by": sec["detected_by"]}),
+            is_edited       = False,
+        ))
+
+    # Update raw_text in case extractor improved too
+    resume.raw_text = raw_text
+    db.commit()
+
+    logger.info(f"Re-parsed resume {resume_id}: {len(sections)} sections")
+    return {
+        "resume_id":     resume_id,
+        "section_count": len(sections),
+        "sections": [
+            {
+                "section_type":  s["section_type"],
+                "section_label": s["section_label"],
+                "position_index": s["position_index"],
             }
             for s in sections
         ]
