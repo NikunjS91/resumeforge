@@ -29,7 +29,7 @@ class JDAnalyzeRequest(BaseModel):
 
 @router.get("/status")
 def analyze_status():
-    return {"status": "not implemented yet", "module": "job_analyzer"}
+    return {"status": "operational", "module": "job_analyzer"}
 
 
 @router.post("/job")

@@ -231,8 +231,7 @@ def llm_full_parse(raw_text: str) -> list | None:
         response_text = r.json().get("response", "").strip()
 
         # Strip qwen3 thinking tags
-        import re
-        response_text = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL).strip()
+        response_text = _re.sub(r'<think>.*?</think>', '', response_text, flags=_re.DOTALL).strip()
 
         # Strip markdown code fences if present
         if "```" in response_text:
