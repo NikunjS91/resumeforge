@@ -184,7 +184,6 @@ def extract_llm(jd_text: str, regex_result: dict) -> dict:
 
     try:
         # Strip qwen3 thinking tags
-        import re
         response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL).strip()
 
         # Strip markdown fences if present

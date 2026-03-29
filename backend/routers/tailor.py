@@ -35,7 +35,7 @@ class TailorRequest(BaseModel):
 
 @router.get("/status")
 def tailor_status():
-    return {"status": "not implemented yet", "module": "resume_tailor"}
+    return {"status": "operational", "module": "resume_tailor"}
 
 
 @router.post("/resume")
