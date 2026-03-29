@@ -1,5 +1,4 @@
 import re
-import json
 import json as json_lib
 import logging
 import requests
@@ -200,7 +199,7 @@ def tailor_section(
         try:
             if "```" in notes_raw:
                 notes_raw = notes_raw.split("```")[1].lstrip("json").strip()
-            notes = json.loads(notes_raw)
+            notes = json_lib.loads(notes_raw)
         except Exception:
             notes = [notes_raw[:200]] if notes_raw else []
 

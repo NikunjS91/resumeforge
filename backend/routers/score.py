@@ -35,7 +35,7 @@ class ATSScoreRequest(BaseModel):
 
 @router.get("/status")
 def score_status():
-    return {"status": "not implemented yet", "module": "ats_scorer"}
+    return {"status": "operational", "module": "ats_scorer"}
 
 
 @router.post("/ats")

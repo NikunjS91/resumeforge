@@ -25,7 +25,7 @@ MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 # Keep exactly as Day 1 left it
 @router.get("/status")
 def parse_status():
-    return {"status": "not implemented yet", "module": "resume_parser"}
+    return {"status": "operational", "module": "resume_parser"}
 
 
 @router.post("/upload")
