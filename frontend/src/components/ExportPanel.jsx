@@ -153,7 +153,7 @@ export default function ExportPanel({ resumeId, sessionId }) {
         >
           {loading[selected]
             ? `⏳ Generating ${TEMPLATES[selected].name}...`
-            : `⬇ Download ${TEMPLATES[selected].name} Resume`}
+            : `⬇ Download Tailored Resume`}
         </button>
       </div>
 
