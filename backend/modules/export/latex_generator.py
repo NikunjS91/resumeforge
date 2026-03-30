@@ -196,6 +196,9 @@ FORMAT RULES:
 - Bullet points start with action verbs (Led, Built, Deployed, Reduced, Increased, Developed, etc.)
 - Do NOT use \\begin{{itemize}} for the contact header — it is already structured in the template
 - Do NOT add section headers outside the designated blocks
+- NEVER add a Contact or Personal Information section in the resume body. Contact info belongs
+  ONLY in the header \\begin{{center}} block already in the template.
+- For experienced candidates: set LATEX_COURSEWORK_BLOCK to empty string (no coursework section).
 
 {target}
 
@@ -294,10 +297,14 @@ Before writing your output, verify:
 ✓ GPA matches source EXACTLY
 ✓ LinkedIn/GitHub are copied from source (real URL or placeholder, not invented)
 ✓ No metric was invented (all numbers came from source data)
-✓ All sections present (Education, Skills, Experience, Projects, Leadership)
+✓ All sections present (Experience, Skills, Projects, Education, Leadership)
 ✓ All skills categories present
-✓ ALL PROJECTS present (count them: Job Application Tracker, TrueSight, Sentiment Analysis, etc)
+✓ ALL PROJECTS present (count them in the source and match that count)
 ✓ Compressed to fit close to 1 page (but did NOT remove projects to achieve this)
+✓ SECTION ORDER (experienced): Experience → Skills → Projects → Education → Leadership
+  CHECK: Does Experience come BEFORE Education? If not, fix it now.
+✓ NO Contact/Personal Info section in the body — contact info is in the header only
+✓ NO Coursework section (experienced candidates do not list coursework)
 
 Now generate ONLY the complete LaTeX code.
 Start with \\documentclass — end with \\end{{document}}.

@@ -29,23 +29,32 @@ STRUCTURE RULES:
    Reduced, Increased, Designed, Implemented, Optimized, Managed, Delivered)
 7. No personal pronouns (never use I, me, my, we, our)
 
+HEADER vs BODY:
+8. NEVER generate a CONTACT or PERSONAL INFORMATION section in the resume body.
+   Contact info (name, email, phone, LinkedIn, GitHub) goes ONLY in the LaTeX header
+   \begin{center} block. If source data has a "Contact" section, extract the values
+   for the header — do NOT render it as a body section with a section heading.
+
 CONTENT PRESERVATION:
-8. Include ALL sections from source — never drop entire sections
-9. Include ALL skills categories — reduce bullets per category if needed but keep all categories
-10. Include ALL projects — reduce bullets per project if needed but keep all projects
-11. If content does not fit on one page, reduce SPACING and BULLETS per item — not whole sections
-12. Mirror job description keywords EXACTLY where present in source data
+9. Include ALL sections from source — never drop entire sections
+10. Include ALL skills categories — reduce bullets per category if needed but keep all categories
+11. Include ALL projects — reduce bullets per project if needed but keep all projects
+12. If content does not fit on one page, reduce SPACING and BULLETS per item — not whole sections
+13. Mirror job description keywords EXACTLY where present in source data
 """
 
 EXPERIENCED_RULES = """
 RULES FOR EXPERIENCED CANDIDATES (1+ years work experience):
-1. Professional Experience section comes BEFORE Education
+1. MANDATORY SECTION ORDER: Header → Experience → Skills → Projects → Education → Leadership
+   Education MUST come AFTER Experience. No exceptions.
 2. No "Objective" statement — omit it entirely
 3. Education section goes at the BOTTOM — include degree, school, GPA (EXACT value), graduation date
 4. Focus on IMPACT and ROI — use the formula: Action Verb + What + Measurable Result (if in source)
 5. Current/most recent role: 4-5 bullets max. Older roles: 2-3 bullets max.
 6. Skills: keep ALL categories from source — reduce rows per category before dropping categories
 7. Projects: keep ALL projects from source — reduce to 3 bullets each if space is tight
+8. Do NOT include a Relevant Coursework section. If the source has one, discard it entirely —
+   experienced candidates do not list coursework on their resume.
 
 ONE-PAGE FITTING STRATEGY (use in this order, stop when it fits):
    Step 1: Reduce line spacing (use \\vspace{1pt} between sections)
@@ -85,7 +94,7 @@ NEVER add a second page — truncate content if necessary
 4. Section headers: \\large\\textbf\\uppercase with \\hrule below, color #16213e
 5. Body text: 10pt regular, linespread 0.88
 6. Bullets: leftmargin=0.15in, nosep, itemsep=0pt (ultra compact)
-7. Skills: tabular format with @{}p{1.45in}p{5.25in}@{} column widths
+7. Skills: tabular format with @{}p{1.7in}p{5.0in}@{} column widths
 8. Dates: always right-aligned using \\hfill on same line as company/role
 9. Technologies line in projects: \\textbf{Technologies:} inside itemize, NOT a new section
 10. Special characters MUST be escaped: & → \\&, % → \\%, $ → \\$, # → \\#, _ → \\_, { → \\{, } → \\}

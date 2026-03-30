@@ -11,13 +11,28 @@ def extract_pdf(file_path: str) -> dict:
     Layout-aware PDF extraction using bounding box word positions.
     Reconstructs lines by grouping words with similar Y coordinates,
     which prevents multi-column skill tables from bleeding into each other.
+    Also extracts hyperlinks from PDF annotations so real LinkedIn/GitHub
+    URLs are preserved even when the display text differs from the URL.
     """
     all_lines = []
     page_count = 0
+    linkedin_url = None
+    github_url = None
 
     with pdfplumber.open(file_path) as pdf:
         page_count = len(pdf.pages)
         for page in pdf.pages:
+            # Extract hyperlinks from PDF annotations
+            try:
+                for link in (page.hyperlinks or []):
+                    uri = link.get('uri', '')
+                    if uri and 'linkedin.com' in uri and not linkedin_url:
+                        linkedin_url = uri
+                    elif uri and 'github.com' in uri and not github_url:
+                        github_url = uri
+            except Exception:
+                pass
+
             words = page.extract_words(
                 x_tolerance=3,
                 y_tolerance=3,
@@ -51,6 +66,17 @@ def extract_pdf(file_path: str) -> dict:
     raw_text = "\n".join(all_lines).strip()
     # Rejoin words hyphenated across PDF lines (e.g. "CloudForma-\ntion" → "CloudFormation")
     raw_text = re.sub(r'-\n(\w)', r'\1', raw_text)
+
+    # Prepend extracted hyperlink URLs so the contact section captures real URLs.
+    # pdfplumber extracts display text only; annotations hold the actual href.
+    url_lines = []
+    if linkedin_url:
+        url_lines.append(f"LinkedIn: {linkedin_url}")
+    if github_url:
+        url_lines.append(f"GitHub: {github_url}")
+    if url_lines:
+        raw_text = "\n".join(url_lines) + "\n" + raw_text
+
     return {"raw_text": raw_text, "page_count": page_count}
 
 
