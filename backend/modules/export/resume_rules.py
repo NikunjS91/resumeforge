@@ -37,10 +37,13 @@ HEADER vs BODY:
 
 CONTENT PRESERVATION:
 9. Include ALL sections from source — never drop entire sections
-10. Include ALL skills categories — reduce bullets per category if needed but keep all categories
+10. Include ALL skills categories — reduce bullets per category if needed but keep all categories.
+    CRITICAL: Only include skill categories explicitly listed in the source skills section.
+    NEVER add skill categories inferred from experience/project bullets.
 11. Include ALL projects — reduce bullets per project if needed but keep all projects
 12. If content does not fit on one page, reduce SPACING and BULLETS per item — not whole sections
 13. Mirror job description keywords EXACTLY where present in source data
+14. Leadership & Activities section is MANDATORY if it exists in the source — never remove it
 """
 
 EXPERIENCED_RULES = """
@@ -113,7 +116,7 @@ SECTION_ORDER_EXPERIENCED = [
     "skills",       # Technical Skills (tabular)
     "projects",     # Projects
     "education",    # Education (bottom)
-    "leadership",   # Leadership & Activities (if present)
+    "leadership",   # Leadership & Activities (MANDATORY if present in source — never drop)
 ]
 
 SECTION_ORDER_FRESHER = [

@@ -58,6 +58,87 @@ def detect_candidate_type(sections: list) -> str:
     return 'fresher'
 
 
+def _count_bullets(content: str) -> int:
+    """Count bullet points in a section content string (excluding Technologies lines)."""
+    return sum(1 for line in content.splitlines()
+               if line.strip().startswith(('•', '-', '*', '\\item', '·'))
+               and 'technologies' not in line.lower())
+
+
+def _strip_bullet(line: str) -> str:
+    """Remove leading bullet character and whitespace from a line."""
+    import re as _re
+    return _re.sub(r'^[•\-\*·\s]+', '', line).strip()
+
+
+def _parse_projects(content: str) -> list:
+    """
+    Parse individual projects from the projects section content.
+    Returns list of dicts: {name, github_suffix, bullets, has_technologies, tech_line, raw_block}
+    """
+    projects = []
+    lines = content.splitlines()
+    current_name = ""
+    current_github = ""
+    current_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        is_bullet = stripped.startswith(('•', '-', '*', '·'))
+        # A project heading: not a bullet
+        if not is_bullet:
+            # Save previous project
+            if current_name:
+                block = '\n'.join(current_lines)
+                bullet_count = _count_bullets(block)
+                # Technologies line: bullet containing "Technologies:"
+                tech_line = next(
+                    (_strip_bullet(l) for l in current_lines
+                     if 'technologies' in l.lower() and l.strip().startswith(('•', '-', '*', '·'))),
+                    ""
+                )
+                projects.append({
+                    'name': current_name,
+                    'github_suffix': current_github,
+                    'bullets': bullet_count,
+                    'has_technologies': bool(tech_line),
+                    'tech_line': tech_line,
+                    'raw_block': block
+                })
+            # Parse "Project Name GitHub" or "Project Name" from heading
+            if ' GitHub' in stripped:
+                current_name = stripped[:stripped.rfind(' GitHub')].strip()
+                current_github = 'GitHub'
+            else:
+                current_name = stripped
+                current_github = ''
+            current_lines = []
+        else:
+            current_lines.append(line)
+
+    # Save last project
+    if current_name:
+        block = '\n'.join(current_lines)
+        bullet_count = _count_bullets(block)
+        tech_line = next(
+            (_strip_bullet(l) for l in current_lines
+             if 'technologies' in l.lower() and l.strip().startswith(('•', '-', '*', '·'))),
+            ""
+        )
+        projects.append({
+            'name': current_name,
+            'github_suffix': current_github,
+            'bullets': bullet_count,
+            'has_technologies': bool(tech_line),
+            'tech_line': tech_line,
+            'raw_block': block
+        })
+
+    return projects
+
+
 def build_data_summary(
     sections: list,
     job_title: str = "",
@@ -65,7 +146,8 @@ def build_data_summary(
     required_skills: list = None,
     nicetohave_skills: list = None,
     improvement_notes: list = None,
-    is_tailored: bool = False
+    is_tailored: bool = False,
+    candidate_type: str = "experienced"
 ) -> str:
     """Build a structured summary of all resume data for the LLM."""
     required_skills = required_skills or []
@@ -99,9 +181,73 @@ def build_data_summary(
         sec_type = section.get('section_type', 'other')
         sec_label = section.get('section_label', sec_type)
         content = section.get('content_text', '').strip()
-        if content:
-            lines.append(f"\n[{sec_label.upper()} — type: {sec_type}]")
+        if not content:
+            continue
+
+        # ── BUG-011: suppress coursework for experienced candidates ───────────
+        if sec_type == 'coursework' and candidate_type == 'experienced':
+            continue  # LLM cannot output what it never sees
+
+        # ── BUG-011: also strip "Relevant Coursework:" line from education ──
+        if sec_type == 'education' and candidate_type == 'experienced':
+            cleaned_lines = [
+                l for l in content.splitlines()
+                if 'relevant coursework' not in l.lower()
+                and not l.strip().lower().startswith('coursework')
+            ]
+            content = '\n'.join(cleaned_lines).strip()
+
+        # ── BUG-008: annotate experience bullet count ─────────────────────────
+        if sec_type == 'experience':
+            bullet_count = _count_bullets(content)
+            lines.append(
+                f"\n[{sec_label.upper()} — type: {sec_type}]"
+                f"\n[COMPLETENESS: source has {bullet_count} bullets — "
+                f"output ALL {bullet_count}, NONE dropped, NONE merged]"
+            )
             lines.append(content)
+            continue
+
+        # ── BUG-009/012/018/019: annotate projects with order, names, bullets ──
+        if sec_type == 'projects':
+            projects = _parse_projects(content)
+            lines.append(f"\n[{sec_label.upper()} — type: {sec_type}]")
+            lines.append(
+                "[ORDER: output projects in EXACTLY this sequence — "
+                "PROJECT 1 first, PROJECT 2 second, PROJECT 3 third. "
+                "Do NOT reorder for job relevance or any other reason.]"
+            )
+            for idx, proj in enumerate(projects, 1):
+                # Pre-format the LaTeX heading so LLM just copies it
+                gh = r" \hfill \href{https://github.com/NikunjS91}{GitHub}" if proj['github_suffix'] else ""
+                latex_heading = f"\\textbf{{{proj['name']}}}{gh}"
+                lines.append(
+                    f"\n[PROJECT {idx} of {len(projects)}]"
+                    f"\n[EXACT HEADING TO USE: {latex_heading}]"
+                    f"\n[BULLETS: source has {proj['bullets']} — output ALL {proj['bullets']}]"
+                )
+                if proj['has_technologies']:
+                    lines.append(
+                        f"[TECHNOLOGIES LINE — include as last bullet: "
+                        f"\\item \\textbf{{Technologies:}} {proj['tech_line'].replace('Technologies:', '').strip()}]"
+                    )
+                lines.append(proj['name'])
+                lines.append(proj['raw_block'])
+            continue
+
+        # ── BUG-013: annotate leadership with explicit LATEX_LEADERSHIP_BLOCK mapping ──
+        if sec_type == 'leadership':
+            lines.append(
+                f"\n[{sec_label.upper()} — type: {sec_type}]"
+                f"\n[CRITICAL: This section MUST fill LATEX_LEADERSHIP_BLOCK. "
+                f"It is MANDATORY. An empty LATEX_LEADERSHIP_BLOCK is a critical error.]"
+            )
+            lines.append(content)
+            continue
+
+        # ── Default: append section as-is ────────────────────────────────────
+        lines.append(f"\n[{sec_label.upper()} — type: {sec_type}]")
+        lines.append(content)
 
     return '\n'.join(lines)
 
@@ -118,6 +264,12 @@ def build_template_fill_prompt(
     The LLM never touches the document structure — only replaces placeholder tokens.
     """
     target = f"Target role: {job_title} at {company_name}" if job_title else ""
+    coursework_rule = (
+        "EXPERIENCED CANDIDATE: LATEX_COURSEWORK_BLOCK MUST be an empty string. "
+        "Delete the token entirely — do NOT output any coursework section."
+        if candidate_type == "experienced"
+        else "FRESHER CANDIDATE: include coursework in LATEX_COURSEWORK_BLOCK if present in source."
+    )
 
     return f"""Fill in the LaTeX resume template below. Replace every LATEX_* placeholder with the correct value from the source data.
 
@@ -134,11 +286,28 @@ COMPLETENESS RULES (missing content = failure):
 ════════════════════════════════════════════
 C1. SKILLS: count the skill categories in source data — include EVERY SINGLE ONE as its own row.
     Do NOT merge categories. Do NOT drop categories. If source has 10 categories, output 10 rows.
+    CRITICAL: Only include skill categories that are EXPLICITLY listed in the skills section of the source.
+    NEVER infer or add skill categories from the experience or projects sections (e.g. do NOT add
+    "Frontend: React" just because React appears in a job bullet — it must be in the skills section).
 C2. PROJECTS: include ALL projects from source. Include ALL bullets from source (up to 6 per project).
     Keep specific metrics ("76% accuracy", "85% accuracy", "20% attrition reduction") — these are real.
-C3. EXPERIENCE: include ALL bullets for each role (up to 6 per role).
+    For each project, if a Technologies line exists in the source (e.g. "Technologies: React, Node.js..."),
+    include it as the LAST bullet: \\item \\textbf{{Technologies:}} React, Node.js, ...
+    If the source has a GitHub link for a project, add it right-aligned in the heading:
+    \\textbf{{Project Name}} \\hfill \\href{{https://github.com/...}}{{GitHub}}
+C3. EXPERIENCE: include ALL bullets for each role — do NOT cap or drop any bullets.
+    If source has 6 bullets, output all 6. Only reduce if the page strictly cannot fit.
 C4. VOLUNTEER WORK: if source has volunteer work or a volunteer section, include it in LATEX_LEADERSHIP_BLOCK.
 C5. LEADERSHIP: if source has a leadership/clubs section, include it in LATEX_LEADERSHIP_BLOCK alongside volunteer work.
+    CRITICAL: NEVER drop the Leadership & Activities section if it exists in the source. It is MANDATORY.
+C6. LATEX_LEADERSHIP_BLOCK MAPPING: The source section annotated with type "leadership" ALWAYS maps to
+    LATEX_LEADERSHIP_BLOCK. If you output an empty LATEX_LEADERSHIP_BLOCK when the source has a leadership
+    section, that is a critical failure. Go back and fill it.
+C7. PROJECT ORDER: Projects are annotated [PROJECT 1], [PROJECT 2], [PROJECT 3] in the source.
+    Output them in EXACTLY that order. Do NOT reorder by JD relevance or any other reason.
+C8. PROJECT NAMES: Use the EXACT name shown in "EXACT NAME:" annotation — every word, dash, and subtitle.
+    Do NOT shorten, abbreviate, or drop any part. "AI-Powered Job Application Tracker - Cloud Deployed"
+    must appear in full — never as "Job Application Tracker".
 
 ════════════════════════════════════════════
 PLACEHOLDER GUIDE:
@@ -154,8 +323,9 @@ PLACEHOLDER GUIDE:
 - LATEX_AUTHOR_NAME → Full Name
 
 - LATEX_EXPERIENCE_BLOCK →
-    For each role: \\resumesubheading{{Company}}{{Dates}}{{Title}}{{Location}}
-    followed by \\begin{{itemize}} with ALL bullets (up to 6) \\end{{itemize}}
+    For each role: \\resumesubheading{{Job Title}}{{Dates}}{{Company Name}}{{Location}}
+    The Job Title MUST be arg #1 (rendered bold). Company Name is arg #3 (rendered italic).
+    followed by \\begin{{itemize}} with ALL bullets from source — include every bullet, do not cap \\end{{itemize}}
     Include volunteer/internship roles here ONLY if they are work experience (not in volunteer section).
 
 - LATEX_SKILLS_ROWS →
@@ -198,7 +368,7 @@ FORMAT RULES:
 - Do NOT add section headers outside the designated blocks
 - NEVER add a Contact or Personal Information section in the resume body. Contact info belongs
   ONLY in the header \\begin{{center}} block already in the template.
-- For experienced candidates: set LATEX_COURSEWORK_BLOCK to empty string (no coursework section).
+- CANDIDATE TYPE: {candidate_type.upper()} — {coursework_rule}
 
 {target}
 
@@ -211,6 +381,17 @@ SOURCE DATA (copy values exactly — do not invent or omit):
 TEMPLATE (replace LATEX_* tokens only — do NOT change any LaTeX commands or document structure):
 ════════════════════════════
 {template_content}
+
+════════════════════════════
+FINAL CHECKS (verify before outputting):
+════════════════════════════
+✓ LATEX_LEADERSHIP_BLOCK is NOT empty — source has a leadership section, it MUST appear
+✓ LATEX_COURSEWORK_BLOCK is an empty string — experienced candidate, no coursework section
+✓ Projects appear in ORDER: [PROJECT 1] first, [PROJECT 2] second, [PROJECT 3] third
+✓ Each project uses its EXACT NAME from the "EXACT NAME:" annotation — not shortened
+✓ Each project annotated with Technologies has it as the last \\item \\textbf{{Technologies:}}
+✓ Experience has ALL bullets matching the [COMPLETENESS: N bullets] annotation count
+✓ GPA is copied exactly from source
 
 Return ONLY the complete filled LaTeX. Start with \\documentclass, end with \\end{{document}}. No markdown, no explanations.
 """
@@ -298,9 +479,15 @@ Before writing your output, verify:
 ✓ LinkedIn/GitHub are copied from source (real URL or placeholder, not invented)
 ✓ No metric was invented (all numbers came from source data)
 ✓ All sections present (Experience, Skills, Projects, Education, Leadership)
-✓ All skills categories present
+✓ Skills table has ONLY categories from the source skills section — no inferred categories from experience/projects
+✓ Experience subheading order: Job Title (bold, arg1) then Company (italic, arg3) — NOT company first
+✓ ALL experience bullets present — do not cap; if source has 6, output 6
+✓ ALL projects have Technologies bullet as last item (if present in source)
+✓ ALL projects have GitHub link in heading (if present in source)
+✓ ALL skills categories present
 ✓ ALL PROJECTS present (count them in the source and match that count)
-✓ Compressed to fit close to 1 page (but did NOT remove projects to achieve this)
+✓ LEADERSHIP section is present if source has it — NEVER drop Leadership & Activities
+✓ Compressed to fit close to 1 page (but did NOT remove projects or sections to achieve this)
 ✓ SECTION ORDER (experienced): Experience → Skills → Projects → Education → Leadership
   CHECK: Does Experience come BEFORE Education? If not, fix it now.
 ✓ NO Contact/Personal Info section in the body — contact info is in the header only
@@ -367,6 +554,18 @@ def call_nvidia(prompt: str, system: str) -> str:
                 break
             try:
                 chunk = json.loads(data)
+            except json.JSONDecodeError:
+                # NVIDIA streaming sometimes returns LaTeX with unescaped backslashes
+                # (e.g. \href, \hfill) which are invalid JSON escape sequences.
+                # Fix: escape any lone backslash not already a valid JSON escape.
+                # Note: b'\\\\' = regex pattern matching ONE literal backslash
+                #       b'\\\\\\\\' = replacement inserting TWO backslashes
+                fixed = re.sub(b'\\\\(?!["\\\\/bfnrtu0-9])', b'\\\\\\\\', data)
+                try:
+                    chunk = json.loads(fixed)
+                except Exception:
+                    continue
+            try:
                 delta = chunk.get('choices', [{}])[0].get('delta', {}).get('content', '')
                 if delta:
                     result += delta
@@ -390,6 +589,191 @@ def extract_latex(raw_output: str) -> str:
 
     # If no clean boundaries, return cleaned version
     return raw_output.strip()
+
+
+def _build_projects_latex(content: str) -> str:
+    """
+    Pre-build the LaTeX for the Projects section in Python.
+    Preserves exact names, all bullets, Technologies lines, and correct order.
+    """
+    projects = _parse_projects(content)
+    if not projects:
+        return ""
+
+    latex_lines = []
+    for proj in projects:
+        # Build heading with optional GitHub link
+        name_esc = proj['name'].replace('&', r'\&').replace('%', r'\%')
+        if proj['github_suffix']:
+            heading = (
+                f"\\textbf{{{name_esc}}} "
+                r"\hfill \href{https://github.com/NikunjS91}{GitHub}"
+            )
+        else:
+            heading = f"\\textbf{{{name_esc}}}"
+        latex_lines.append(heading)
+
+        # Build bullets (skip Technologies line — we add it last, formatted)
+        raw_bullets = [
+            l.strip() for l in proj['raw_block'].splitlines()
+            if l.strip().startswith(('•', '-', '*', '·'))
+            and 'technologies' not in l.lower()
+        ]
+        latex_lines.append(r"\begin{itemize}")
+        for bullet in raw_bullets:
+            # Strip the bullet character
+            text = _strip_bullet(bullet).replace('&', r'\&').replace('%', r'\%').replace('#', r'\#')
+            latex_lines.append(f"\\item {text}")
+
+        # Add Technologies line as last bullet if it exists
+        if proj['has_technologies'] and proj['tech_line']:
+            tech_content = proj['tech_line'].replace('Technologies:', '').strip()
+            tech_content = tech_content.replace('&', r'\&').replace('%', r'\%')
+            latex_lines.append(f"\\item \\textbf{{Technologies:}} {tech_content}")
+
+        latex_lines.append(r"\end{itemize}")
+
+    return '\n'.join(latex_lines)
+
+
+def _replace_latex_section(latex: str, section_name: str, new_content: str) -> str:
+    """
+    Replace the body of a named \\resumesection in the generated LaTeX with new_content.
+    Matches from \\resumesection{Name} to the next \\resumesection or \\end{document}.
+    """
+    import re as _re
+    pattern = (
+        r'(\\resumesection\{' + _re.escape(section_name) + r'[^}]*\})'
+        r'(.*?)'
+        r'(?=(\\resumesection|\\end\{document\}))'
+    )
+    replacement = r'\1\n' + new_content + r'\n'
+    result = _re.sub(pattern, replacement, latex, flags=_re.DOTALL)
+    if result == latex:
+        logger.warning(f"_replace_latex_section: section '{section_name}' not found in output")
+    return result
+
+
+def _remove_coursework_section(latex: str) -> str:
+    """Remove a standalone \\resumesection{Relevant Coursework} block from LaTeX."""
+    import re as _re
+    pattern = (
+        r'\\resumesection\{Relevant Coursework[^}]*\}'
+        r'.*?'
+        r'(?=(\\resumesection|\\end\{document\}))'
+    )
+    return _re.sub(pattern, '', latex, flags=_re.DOTALL)
+
+
+def post_process_latex(latex: str, sections: list, candidate_type: str) -> str:
+    """
+    After LLM generation: replace Projects and Leadership sections with
+    Python-built versions (guaranteed correct names, all bullets, Technologies lines).
+    Also removes Coursework section for experienced candidates.
+    """
+    # Fix Projects (BUG-009, BUG-012, BUG-018, BUG-019)
+    projects_section = next(
+        (s for s in sections if s.get('section_type') == 'projects'), None
+    )
+    if projects_section:
+        projects_content = projects_section.get(
+            'tailored_text', projects_section.get('content_text', '')
+        ).strip()
+        if projects_content:
+            projects_latex = _build_projects_latex(projects_content)
+            latex = _replace_latex_section(latex, 'Projects', projects_latex)
+            logger.info("Post-processed: replaced Projects section with Python-built version")
+
+    # Fix Leadership (BUG-013)
+    leadership_section = next(
+        (s for s in sections if s.get('section_type') == 'leadership'), None
+    )
+    if leadership_section:
+        leadership_content = leadership_section.get(
+            'tailored_text', leadership_section.get('content_text', '')
+        ).strip()
+        if leadership_content:
+            # Only replace if leadership section exists in LLM output; if missing, append it
+            import re as _re
+            if _re.search(r'\\resumesection\{Leadership', latex):
+                leadership_latex = _build_leadership_latex(leadership_content)
+                latex = _replace_latex_section(latex, r'Leadership \& Activities', leadership_latex)
+            else:
+                # Append before \end{document}
+                leadership_latex = _build_leadership_latex(leadership_content)
+                latex = latex.replace(
+                    r'\end{document}',
+                    leadership_latex + '\n' + r'\end{document}'
+                )
+            logger.info("Post-processed: replaced/appended Leadership section")
+
+    # Fix Coursework for experienced candidates (BUG-011)
+    if candidate_type == 'experienced':
+        latex = _remove_coursework_section(latex)
+        logger.info("Post-processed: removed Coursework section (experienced candidate)")
+
+    return latex
+
+
+def _build_leadership_latex(content: str) -> str:
+    """
+    Pre-build the LaTeX for the Leadership & Activities section in Python.
+    This bypasses the LLM entirely for this block — guaranteeing it is never dropped.
+    Parses entries that look like: "Role, Title  Dates\nDescription text"
+    """
+    import re as _re
+    lines = [l for l in content.splitlines() if l.strip()]
+    if not lines:
+        return ""
+
+    latex_lines = [r"\resumesection{Leadership \& Activities}"]
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        # Detect a heading line: contains a year or date range
+        has_date = bool(_re.search(r'\b(20\d\d|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sept|Sep|Oct|Nov|Dec|Present)\b', line))
+        if has_date:
+            # Try to split "Title  Date" — last occurrence of a date pattern
+            date_match = _re.search(
+                r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{4}|'
+                r'\d{4})\s*[–\-]\s*'
+                r'(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{4}|Present|\d{4})',
+                line
+            )
+            if date_match:
+                role = line[:date_match.start()].strip()
+                dates = date_match.group(0).strip()
+            else:
+                role = line
+                dates = ""
+            # Next line(s) until blank or another heading = description
+            desc_lines = []
+            i += 1
+            while i < len(lines):
+                next_line = lines[i].strip()
+                next_has_date = bool(_re.search(
+                    r'\b(20\d\d|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|Present)\b',
+                    next_line
+                ))
+                if next_has_date and i < len(lines) - 1:
+                    break
+                desc_lines.append(next_line)
+                i += 1
+            # Escape ampersands in role/desc for LaTeX
+            role_esc = role.replace('&', r'\&')
+            dates_esc = dates.replace('–', '--')
+            latex_lines.append(f"\\resumesubheading{{{role_esc}}}{{{dates_esc}}}{{}}{{}}")
+            if desc_lines:
+                latex_lines.append(r"\begin{itemize}")
+                for d in desc_lines:
+                    if d:
+                        d_esc = d.replace('&', r'\&').replace('%', r'\%')
+                        latex_lines.append(f"\\item {d_esc}")
+                latex_lines.append(r"\end{itemize}")
+        else:
+            i += 1
+
+    return '\n'.join(latex_lines)
 
 
 def generate_latex_stage1(
@@ -419,7 +803,8 @@ def generate_latex_stage1(
         required_skills=required_skills,
         nicetohave_skills=nicetohave_skills,
         improvement_notes=improvement_notes,
-        is_tailored=is_tailored
+        is_tailored=is_tailored,
+        candidate_type=candidate_type
     )
 
     # ── Template-fill approach (primary): LLM fills LATEX_* placeholders only ──
@@ -452,6 +837,11 @@ def generate_latex_stage1(
         raw = call_ollama(prompt, STAGE_1_SYSTEM_PROMPT)
 
     latex = extract_latex(raw)
+
+    # ── Post-process: replace Projects/Leadership with Python-built versions ──
+    # The LLM regenerates the full document and consistently mangles these sections.
+    # Post-processing guarantees correctness regardless of LLM behaviour.
+    latex = post_process_latex(latex, sections, candidate_type)
 
     # Validate the template placeholders were filled (not left as LATEX_*)
     unfilled = [p for p in ["LATEX_FULL_NAME", "LATEX_EMAIL", "LATEX_EDUCATION_BLOCK"]

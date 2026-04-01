@@ -19,12 +19,33 @@ def keyword_variants(keyword: str) -> list[str]:
     """
     Generate common variants of a keyword for fuzzy matching.
     e.g. 'GitHub Actions' → ['github actions', 'github-actions', 'githubactions']
+    e.g. 'Proficiency in React' → also checks 'react'
     """
     kw = normalize(keyword)
     variants = {kw}
     variants.add(kw.replace(' ', '-'))
     variants.add(kw.replace(' ', ''))
     variants.add(kw.replace('.', ''))
+
+    # Extract core skill from phrases like "Proficiency in React", "Experience with AWS"
+    # e.g. "proficiency in react" → "react", "experience with docker" → "docker"
+    core_match = re.match(
+        r'^(?:proficiency|experience|knowledge|familiarity|expertise|ability|'
+        r'understanding|skills?|working knowledge)\s+(?:in|with|of|using|on|for|across)\s+(.+)$',
+        kw
+    )
+    if core_match:
+        core = core_match.group(1).strip()
+        variants.add(core)
+        variants.add(core.replace(' ', '-'))
+        variants.add(core.replace(' ', ''))
+
+    # "2+ years of Python" or "3 years experience in AWS" → "python" / "aws"
+    years_match = re.match(r'^\d+\+?\s+years?\s+(?:of\s+)?(?:experience\s+(?:in|with)\s+)?(.+)$', kw)
+    if years_match:
+        core = years_match.group(1).strip()
+        variants.add(core)
+
     # Common abbreviations
     abbreviations = {
         'kubernetes': ['k8s'],

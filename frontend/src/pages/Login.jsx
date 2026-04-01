@@ -32,10 +32,10 @@ export default function Login() {
         {error && <p className="text-red-500 text-sm mb-4 text-center bg-red-50 py-2 rounded-lg">{error}</p>}
         <form onSubmit={handleLogin} className="space-y-4">
           <input type="email" placeholder="Email" value={email}
-            onChange={e => setEmail(e.target.value)} required
+            onChange={e => setEmail(e.target.value)} required autoComplete="email"
             className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm" />
           <input type="password" placeholder="Password" value={password}
-            onChange={e => setPassword(e.target.value)} required
+            onChange={e => setPassword(e.target.value)} required autoComplete="current-password"
             className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm" />
           <button type="submit"
             className="w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold hover:bg-indigo-700 transition text-sm">

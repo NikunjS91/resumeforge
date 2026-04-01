@@ -84,7 +84,8 @@ def tailor_resume_oneshot(
         f"- Use strong action verbs (Led, Built, Architected, Deployed, Optimized)\n"
         f"- Preserve quantified metrics (%, numbers, scale)\n"
         f"- Match keywords from required skills where truthfully applicable\n"
-        f"- Keep roughly the same length as the original\n"
+        f"- PRESERVE ALL BULLETS — do NOT drop, merge, or summarize bullet points.\n"
+        f"  Count the bullets in each section of the original and output the SAME count.\n"
         f"- For sections NOT in the list above, return the original text unchanged\n\n"
         f"Return ONLY valid JSON — no explanation, no markdown, no backticks:\n"
         f'{{"sections": [{{"section_type": "skills", "tailored_text": "...", '
@@ -173,7 +174,8 @@ def tailor_section(
         f"- Use strong action verbs (Led, Built, Architected, Optimized, Deployed)\n"
         f"- Keep quantified metrics if they exist (%, numbers, scale)\n"
         f"- Match keywords from the target skills list where truthfully applicable\n"
-        f"- Keep roughly the same length as the original\n"
+        f"- PRESERVE ALL BULLETS — count the bullet points in the original and output the SAME count.\n"
+        f"  Do NOT drop, merge, or summarize any bullet points.\n"
         f"- Return ONLY the rewritten section text, no explanation\n\n"
         f"Original {section_type} section:\n{section_content}"
     )

@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import threading
 from typing import Optional
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from database import get_db
+from database import get_db, SessionLocal
 from models.tailoring_session import TailoringSession
 from models.resume import Resume
 from models.resume_section import ResumeSection
@@ -21,6 +22,7 @@ from modules.export.latex_reviewer import review_latex_stage2
 from modules.export.latex_compiler import compile_latex
 from modules.export.latex_surgeon import surgical_tailor
 from modules.export.spacing_normalizer import normalize_spacing
+from modules.export.job_store import create_job, update_job, get_job
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/export", tags=["PDF Exporter"])
@@ -164,20 +166,25 @@ def export_pdf(
 
     if has_master:
         # ── SURGICAL PATH: minimal changes to master LaTeX ────────────────────────
-        logger.info("Using surgical tailoring on master LaTeX")
-        try:
-            latex_final = surgical_tailor(
-                master_latex=resume_for_master.master_latex,
-                job_title=job_title,
-                company_name=company_name,
-                required_skills=required_skills,
-                nicetohave_skills=nicetohave_skills,
-                provider="nvidia" if os.getenv('NVIDIA_API_KEY') else "ollama"
-            )
-            logger.info("Surgical tailoring complete")
-        except Exception as e:
-            logger.warning(f"Surgical tailor failed, using master as-is: {e}")
+        # Skip LLM if no job context (no session_id → no tailoring needed)
+        if not request.session_id or not job_title:
+            logger.info("No job context — compiling master LaTeX as-is")
             latex_final = resume_for_master.master_latex
+        else:
+            logger.info("Using surgical tailoring on master LaTeX")
+            try:
+                latex_final = surgical_tailor(
+                    master_latex=resume_for_master.master_latex,
+                    job_title=job_title,
+                    company_name=company_name,
+                    required_skills=required_skills,
+                    nicetohave_skills=nicetohave_skills,
+                    provider="nvidia" if os.getenv('NVIDIA_API_KEY') else "ollama"
+                )
+                logger.info("Surgical tailoring complete")
+            except Exception as e:
+                logger.warning(f"Surgical tailor failed, using master as-is: {e}")
+                latex_final = resume_for_master.master_latex
 
     else:
         # ── GENERATION PATH: original 2-stage LLM generation ─────────────────────
@@ -211,6 +218,15 @@ def export_pdf(
             logger.warning(f"Stage 2 review failed, using Stage 1 output: {e}")
             latex_final = latex_stage1
 
+        # Auto-save generated LaTeX as master for future surgical exports
+        if resume_for_master and not resume_for_master.master_latex and latex_final:
+            try:
+                resume_for_master.master_latex = latex_final
+                db.commit()
+                logger.info(f"Auto-saved master_latex for resume {resume_for_master.id}")
+            except Exception as e:
+                logger.warning(f"Failed to auto-save master_latex: {e}")
+
     # ── 6. Normalize spacing and compile to PDF ──────────────────────────────────
     try:
         pdf_path = compile_latex(latex_final, output_stem)
@@ -237,6 +253,290 @@ def export_pdf(
         media_type="application/pdf",
         filename=download_name,
         headers={"Content-Disposition": f'attachment; filename="{download_name}"'}
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Async export: background worker + job status + result download
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _run_export_job(job_id: str, payload: dict):
+    """
+    Background thread: runs the full export pipeline and updates the job store.
+    Receives pre-loaded data dict so no DB session is needed until the final save.
+    """
+    try:
+        has_master   = payload["has_master"]
+        master_latex = payload.get("master_latex", "")
+        job_title    = payload["job_title"]
+        company_name = payload["company_name"]
+        sections_data      = payload["sections_data"]
+        required_skills    = payload["required_skills"]
+        nicetohave_skills  = payload["nicetohave_skills"]
+        improvement_notes  = payload["improvement_notes"]
+        is_tailored        = payload["is_tailored"]
+        template           = payload["template"]
+        output_stem        = payload["output_stem"]
+        session_id         = payload.get("session_id")
+        provider           = payload["provider"]
+
+        if has_master:
+            if not job_title:
+                latex_final = master_latex
+            else:
+                update_job(job_id, stage="Tailoring with AI...")
+                try:
+                    latex_final = surgical_tailor(
+                        master_latex=master_latex,
+                        job_title=job_title,
+                        company_name=company_name,
+                        required_skills=required_skills,
+                        nicetohave_skills=nicetohave_skills,
+                        provider=provider
+                    )
+                except Exception as e:
+                    logger.warning(f"Surgical tailor failed, using master as-is: {e}")
+                    latex_final = master_latex
+        else:
+            update_job(job_id, stage="Stage 1: Generating LaTeX...")
+            try:
+                latex_stage1 = generate_latex_stage1(
+                    sections=sections_data,
+                    job_title=job_title,
+                    company_name=company_name,
+                    required_skills=required_skills,
+                    nicetohave_skills=nicetohave_skills,
+                    improvement_notes=improvement_notes,
+                    is_tailored=is_tailored,
+                    provider=provider,
+                    template=template
+                )
+            except Exception as e:
+                update_job(job_id, status="error", error=f"Stage 1 failed: {e}")
+                return
+
+            update_job(job_id, stage="Stage 2: Reviewing LaTeX...")
+            try:
+                original_data = build_data_summary(sections_data)
+                latex_final = review_latex_stage2(
+                    latex_code=latex_stage1,
+                    original_data=original_data,
+                    provider=provider
+                )
+            except Exception as e:
+                logger.warning(f"Stage 2 failed, using Stage 1: {e}")
+                latex_final = latex_stage1
+
+            # Auto-save generated LaTeX as master for future surgical exports
+            resume_id_for_master = payload.get("resume_id_for_master")
+            if resume_id_for_master and latex_final:
+                db_save = SessionLocal()
+                try:
+                    r = db_save.query(Resume).filter(Resume.id == resume_id_for_master).first()
+                    if r and not r.master_latex:
+                        r.master_latex = latex_final
+                        db_save.commit()
+                        logger.info(f"Auto-saved master_latex for resume {resume_id_for_master}")
+                except Exception as e:
+                    logger.warning(f"Failed to auto-save master_latex: {e}")
+                finally:
+                    db_save.close()
+
+        update_job(job_id, stage="Compiling PDF...")
+        try:
+            pdf_path = compile_latex(latex_final, output_stem)
+        except RuntimeError as e:
+            update_job(job_id, status="error", error=f"PDF compilation failed: {e}")
+            return
+
+        # Save pdf_path to DB using a fresh session
+        if session_id:
+            db = SessionLocal()
+            try:
+                sess = db.query(TailoringSession).filter(
+                    TailoringSession.id == session_id
+                ).first()
+                if sess:
+                    sess.pdf_path = pdf_path
+                    db.commit()
+            finally:
+                db.close()
+
+        update_job(job_id, status="done", stage="Complete", pdf_path=pdf_path)
+        logger.info(f"Export job {job_id} complete: {pdf_path}")
+
+    except Exception as e:
+        logger.error(f"Export job {job_id} unexpected error: {e}")
+        update_job(job_id, status="error", error=str(e))
+
+
+@router.post("/pdf/async")
+def export_pdf_async(
+    request: ExportRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Non-blocking export: loads DB data synchronously, then runs the pipeline
+    in a background thread. Returns job_id immediately for polling.
+    """
+    if not request.session_id and not request.resume_id:
+        raise HTTPException(status_code=422,
+            detail="Provide either session_id or resume_id.")
+
+    # ── Load all required data from DB (same as synchronous endpoint) ──────────
+    sections_data     = []
+    job_title         = ""
+    company_name      = ""
+    resume_name       = "resume"
+    output_stem       = ""
+    session           = None
+    required_skills   = []
+    nicetohave_skills = []
+    improvement_notes = []
+    is_tailored       = bool(request.session_id)
+
+    if request.session_id:
+        session = db.query(TailoringSession).filter(
+            TailoringSession.id == request.session_id,
+            TailoringSession.user_id == current_user.id
+        ).first()
+        if not session:
+            raise HTTPException(status_code=404,
+                detail=f"Tailoring session {request.session_id} not found.")
+        try:
+            tailored_data = json.loads(session.tailored_json or "{}")
+            sections_data = [
+                {
+                    "section_type":   s.get("section_type"),
+                    "section_label":  s.get("section_label", ""),
+                    "content_text":   s.get("tailored_text", s.get("content_text", "")),
+                    "position_index": s.get("position_index", 0),
+                }
+                for s in tailored_data.get("sections", [])
+                if s.get("tailored_text", s.get("content_text", "")).strip()
+            ]
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to parse session: {e}")
+
+        job = db.query(Job).filter(Job.id == session.job_id).first()
+        if job:
+            job_title    = job.job_title or ""
+            company_name = job.company_name or ""
+            try:
+                required_skills   = json.loads(job.required_skills_json or '[]')
+                nicetohave_skills = json.loads(job.nicetohave_skills_json or '[]')
+            except Exception:
+                pass
+        try:
+            tailored_data     = json.loads(session.tailored_json or "{}")
+            improvement_notes = tailored_data.get("improvement_notes", [])
+            if not isinstance(improvement_notes, list):
+                improvement_notes = []
+        except Exception:
+            pass
+
+        resume = db.query(Resume).filter(Resume.id == session.resume_id).first()
+        resume_name = resume.name if resume else "resume"
+        output_stem = f"tailored_{resume_name}_{request.session_id}"
+    else:
+        resume = db.query(Resume).filter(
+            Resume.id == request.resume_id,
+            Resume.user_id == current_user.id
+        ).first()
+        if not resume:
+            raise HTTPException(status_code=404,
+                detail=f"Resume {request.resume_id} not found.")
+        db_sections = db.query(ResumeSection).filter(
+            ResumeSection.resume_id == resume.id
+        ).order_by(ResumeSection.position_index).all()
+        if not db_sections:
+            raise HTTPException(status_code=422,
+                detail="Resume has no sections.")
+        sections_data = [
+            {
+                "section_type":   s.section_type,
+                "section_label":  s.section_label,
+                "content_text":   s.content_text,
+                "position_index": s.position_index,
+            }
+            for s in db_sections
+        ]
+        resume_name = resume.name
+        output_stem = f"original_{resume_name}_{request.resume_id}"
+
+    resume_for_master = db.query(Resume).filter(
+        Resume.id == (session.resume_id if request.session_id else request.resume_id)
+    ).first()
+    has_master   = bool(resume_for_master and resume_for_master.master_latex)
+    master_latex = resume_for_master.master_latex if has_master else ""
+
+    # ── Create job + launch thread ──────────────────────────────────────────────
+    job_id = create_job(current_user.id)
+    payload = {
+        "has_master":            has_master,
+        "master_latex":          master_latex,
+        "job_title":             job_title,
+        "company_name":          company_name,
+        "sections_data":         sections_data,
+        "required_skills":       required_skills,
+        "nicetohave_skills":     nicetohave_skills,
+        "improvement_notes":     improvement_notes,
+        "is_tailored":           is_tailored,
+        "template":              request.template or "classic",
+        "output_stem":           output_stem,
+        "session_id":            request.session_id,
+        "provider":              "nvidia" if os.getenv("NVIDIA_API_KEY") else "ollama",
+        "resume_id_for_master":  resume_for_master.id if resume_for_master else None,
+    }
+    t = threading.Thread(target=_run_export_job, args=(job_id, payload), daemon=True)
+    t.start()
+    logger.info(f"Launched export job {job_id} for user {current_user.id}")
+
+    return {"job_id": job_id, "status": "pending"}
+
+
+@router.get("/status/{job_id}")
+def export_job_status(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Poll export job progress. Returns status, stage, and job_id."""
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or expired.")
+    if job["user_id"] != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your job.")
+    return {
+        "job_id": job_id,
+        "status": job["status"],   # pending | running | done | error
+        "stage":  job["stage"],    # human-readable progress
+        "error":  job.get("error"),
+    }
+
+
+@router.get("/result/{job_id}")
+def export_job_result(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Download the completed PDF for a finished export job."""
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or expired.")
+    if job["user_id"] != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your job.")
+    if job["status"] != "done":
+        raise HTTPException(status_code=400,
+            detail=f"Job not ready (status: {job['status']}).")
+    pdf_path = job["pdf_path"]
+    if not pdf_path or not Path(pdf_path).exists():
+        raise HTTPException(status_code=500, detail="PDF file not found on disk.")
+    return FileResponse(
+        path=pdf_path,
+        media_type="application/pdf",
+        filename="ResumeForge.pdf",
+        headers={"Content-Disposition": 'attachment; filename="ResumeForge.pdf"'}
     )
 
 
