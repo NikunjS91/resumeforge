@@ -124,7 +124,8 @@ def tailor_resume_endpoint(
         )
 
     # ── 7. Save to tailoring_sessions table ──────────────────────────
-    ai_model = DEFAULT_MODEL
+    _MODEL_MAP = {"ollama": "qwen3:14b", "nvidia": "meta/llama-3.3-70b-instruct"}
+    ai_model = _MODEL_MAP.get(request.provider, DEFAULT_MODEL)
     session_record = TailoringSession(
         user_id=current_user.id,
         resume_id=resume.id,

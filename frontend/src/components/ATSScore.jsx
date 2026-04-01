@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import api from '../api/axios'
 import { Card } from './ResumeUpload'
 
@@ -6,8 +6,13 @@ export default function ATSScore({ resumeId, jobId, sessionId, onScored }) {
   const [originalScore, setOriginalScore] = useState(null)
   const [tailoredScore, setTailoredScore] = useState(null)
   const [loading, setLoading] = useState(false)
+  const hasFired = useRef(false)
 
-  useEffect(() => { scoreBoth() }, [sessionId])
+  useEffect(() => {
+    if (hasFired.current) return
+    hasFired.current = true
+    scoreBoth()
+  }, [sessionId])
 
   const scoreBoth = async () => {
     setLoading(true)

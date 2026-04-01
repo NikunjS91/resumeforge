@@ -274,5 +274,84 @@ Add `autoComplete="current-password"` to the password input in `Login.jsx`.
 
 | ID | Bug | Layer | Severity | Status |
 |----|-----|-------|----------|--------|
-| BUG-016 | Export full generation exceeds frontend timeout | Export/Frontend | High | **FIXED** (timeout increased 6→10 min) |
-| BUG-017 | Password field missing autocomplete="current-password" | Frontend/Login | Low | **FIXED** (already had autoComplete) |
+| BUG-008 | 2 experience bullets still dropped (load balancing + dashboards) | LaTeX generation | High | **RE-OPENED** — prompt rule ignored by LLM |
+| BUG-009 | Technologies lines still missing from all 3 projects | LaTeX generation | High | **RE-OPENED** — prompt rule ignored by LLM |
+| BUG-011 | Coursework still renders as separate section for experienced candidate | LaTeX generation | Medium | **RE-OPENED** — coursework section in source data overrides rule |
+| BUG-012 | Project bullets still cut to 3 (from 4-5) | LaTeX generation | High | **RE-OPENED** — LLM prioritising 1-page fit over completeness |
+| BUG-013 | Leadership & Activities still entirely absent | LaTeX generation | High | **RE-OPENED** — LLM fills LATEX_LEADERSHIP_BLOCK with empty string |
+| BUG-018 | Projects output in wrong order | LaTeX generation | Medium | **NEW** — source: Tracker→TrueSight→Sentiment; output: TrueSight→Sentiment→Tracker |
+| BUG-019 | Project names truncated/shortened | LaTeX generation | Medium | **NEW** — "AI-Powered Job Application Tracker - Cloud Deployed" → "Job Application Tracker" |
+
+---
+
+## BUG-018 — Projects Output in Wrong Order
+
+**Status:** OPEN
+**Severity:** Medium
+**Found:** 2026-04-01 Playwright comparison
+**Location:** `backend/modules/export/latex_generator.py` — `build_data_summary()`
+
+### Description
+Original PDF project order: Job Application Tracker → TrueSight → Sentiment Analysis
+Generated output order: TrueSight → Sentiment Analysis → Job Application Tracker
+
+The LLM re-orders projects based on keyword relevance to the job description, not source order.
+
+### Fix Plan
+Number projects explicitly in the data summary with `[PROJECT 1]`, `[PROJECT 2]`, `[PROJECT 3]`
+labels and add a strict ordering rule in the prompt.
+
+---
+
+## BUG-019 — Project Names Truncated
+
+**Status:** OPEN
+**Severity:** Medium
+**Found:** 2026-04-01 Playwright comparison
+**Location:** `backend/modules/export/latex_generator.py` — `build_template_fill_prompt()`
+
+### Description
+| Source Name | Generated Name |
+|-------------|---------------|
+| AI-Powered Job Application Tracker - Cloud Deployed | Job Application Tracker |
+| TrueSight - AI-Powered Deepfake Detection System (Capstone Project) | TrueSight |
+| Real-Time Sentiment Analysis Platform | Sentiment Analysis |
+
+LLM shortens names to save space when fitting to one page.
+
+### Fix Plan
+Annotate each project name in the data summary with `[EXACT NAME — do not shorten]`
+and add explicit rule: "Use the EXACT project name from source — never abbreviate."
+
+---
+
+## Root Cause Analysis — Why "Fixed" Bugs Regressed
+
+All 5 re-opened bugs (BUG-008, 009, 011, 012, 013) had prompt-only fixes that the LLM ignored.
+The fundamental problem: **llama-3.3-70b ignores soft prose rules when under 1-page pressure**.
+
+When the LLM estimates the output will overflow one page, it silently:
+1. Drops bullets (experience and projects) to fit
+2. Drops entire sections (leadership) as lowest priority
+3. Includes coursework section despite the rule, because it sees "coursework" in source data
+
+**Fix strategy (Day 14):** Replace prompt-only rules with **data preprocessing in Python**:
+- Remove coursework from source data for experienced candidates (LLM can't include what it doesn't see)
+- Inject explicit bullet counts: `[BULLET COUNT: 6 — output ALL 6]`
+- Number and label projects with exact names: `[PROJECT 1 — EXACT NAME: ...]`
+- Mark Technologies lines: `[HAS TECHNOLOGIES LINE]`
+- Pre-annotate leadership section: `[→ MUST fill LATEX_LEADERSHIP_BLOCK]`
+
+---
+
+## Open Bugs Summary (Updated 2026-04-01)
+
+| ID | Bug | Layer | Severity | Status |
+|----|-----|-------|----------|--------|
+| BUG-008 | 2 experience bullets dropped (AWS load balancing + Python/SQL dashboards) | LaTeX gen | High | OPEN |
+| BUG-009 | Technologies lines missing from all 3 projects | LaTeX gen | High | OPEN |
+| BUG-011 | Coursework appears as separate section (experienced candidate) | LaTeX gen | Medium | OPEN |
+| BUG-012 | Project bullets cut 4-5→3 per project | LaTeX gen | High | OPEN |
+| BUG-013 | Leadership & Activities entirely missing | LaTeX gen | High | OPEN |
+| BUG-018 | Projects in wrong order | LaTeX gen | Medium | OPEN |
+| BUG-019 | Project names truncated | LaTeX gen | Medium | OPEN |
