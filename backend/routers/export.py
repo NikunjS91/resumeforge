@@ -17,7 +17,7 @@ from models.resume_section import ResumeSection
 from models.job import Job
 from models.user import User
 from routers.auth import get_current_user
-from modules.export.latex_generator import generate_latex_stage1, build_data_summary
+from modules.export.latex_generator import generate_latex_stage1, build_data_summary, post_process_latex, detect_candidate_type
 from modules.export.latex_reviewer import review_latex_stage2
 from modules.export.latex_compiler import compile_latex
 from modules.export.latex_surgeon import surgical_tailor
@@ -312,6 +312,8 @@ def _run_export_job(job_id: str, payload: dict):
                     template=template
                 )
             except Exception as e:
+                import traceback
+                logger.error(f"Stage 1 exception: {e}\n{traceback.format_exc()}")
                 update_job(job_id, status="error", error=f"Stage 1 failed: {e}")
                 return
 
@@ -326,6 +328,12 @@ def _run_export_job(job_id: str, payload: dict):
             except Exception as e:
                 logger.warning(f"Stage 2 failed, using Stage 1: {e}")
                 latex_final = latex_stage1
+
+            # Post-process AFTER Stage 2 so Stage 2 cannot undo corrections
+            # (fixes project names, Technologies lines, Leadership presence)
+            candidate_type = detect_candidate_type(sections_data)
+            latex_final = post_process_latex(latex_final, sections_data, candidate_type)
+            logger.info(f"Post-processed final LaTeX: {len(latex_final)} chars")
 
             # Auto-save generated LaTeX as master for future surgical exports
             resume_id_for_master = payload.get("resume_id_for_master")
