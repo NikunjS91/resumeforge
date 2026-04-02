@@ -252,7 +252,7 @@ into Stage 2 + pdflatex for a client that no longer existed.
 
 ## BUG-017 — Password Field Missing autocomplete Attribute on Login Page
 
-**Status:** OPEN
+**Status:** FIXED
 **Severity:** Low
 **Found:** 2026-03-31 Playwright test
 **Location:** `frontend/src/pages/Login.jsx`
@@ -262,11 +262,9 @@ Browser logs a warning on the login page:
 ```
 [DOM] Input elements should have autocomplete attributes (suggested: "current-password")
 ```
-The password `<input>` is missing `autocomplete="current-password"`, which prevents password
-managers from working correctly and triggers browser warnings.
 
-### Fix Plan
-Add `autoComplete="current-password"` to the password input in `Login.jsx`.
+### Fix Applied
+`autoComplete="current-password"` already present on the password input in `Login.jsx:38`. No change needed.
 
 ---
 
@@ -428,12 +426,15 @@ Original PDF has two distinct Leadership entries:
 
 Generated output has ONE entry (AWS) with CodeChef embedded as a bullet item without dates or description.
 
-### Root Cause (2-part)
+### Root Cause (3-part)
 **Part 1 — Tailoring strips dates:**  
 `'leadership'` is included in `tailorable_types` set in `resume_tailor.py`. NVIDIA NIM rewrites the leadership section and removes the CodeChef dates ("Jan 2022 – May 2023") and description. DB confirms tailored_text = "...CodeChef Programming Club, Technical Mentor — Bharati Vidyapeeth Deemed University" (no date, no mentor bullet).
 
 **Part 2 — `_build_leadership_latex` silently drops dateless lines:**  
 The post-processor detects headings by date presence. CodeChef without dates → `has_date = False` → `else: i += 1` (silently skipped). Instead, the CodeChef line falls into the previous entry's description loop and becomes a bullet under AWS Cloud Club.
+
+**Part 3 — `export.py` reads wrong key (`content_text` vs `original_text`):**  
+Tailored JSON sections store original data under `original_text`, not `content_text`. The fix to use "original content for leadership" was checking `s.get("content_text", "")` which always returned `""`. The leadership section either passed through with empty content or was filtered out entirely. Fix: use `s.get("original_text", s.get("content_text", ""))` in both sync and async paths in `export.py`.
 
 ---
 
@@ -471,4 +472,4 @@ When the LLM estimates the output will overflow one page, it silently:
 | BUG-021 | Missing Bachelor's degree (Bharati Vidyapeeth) | Parser + gen | High | **FIXED** — `_build_education_latex` reads both education + coursework sections |
 | BUG-022 | Duplicate Leadership section header | post_process | Medium | **FIXED** — removed `\resumesection` from `_build_leadership_latex` output |
 | BUG-023 | Relevant Coursework entirely missing | detect + gen | Medium | **FIXED** — candidate now 'fresher'; coursework inlined in `_build_education_latex` |
-| BUG-024 | CodeChef entry wrong (dates stripped by tailor) | Tailor + post_process | High | **FIXED** — `leadership` removed from `TAILORABLE_SECTIONS`; `_build_leadership_latex` handles dateless headings |
+| BUG-024 | CodeChef entry wrong (dates stripped by tailor) | Tailor + post_process + export | High | **FIXED** — `leadership` removed from `TAILORABLE_SECTIONS`; `_build_leadership_latex` handles dateless headings; `export.py` now reads `original_text` key (not `content_text`) |
