@@ -325,6 +325,118 @@ and add explicit rule: "Use the EXACT project name from source — never abbrevi
 
 ---
 
+---
+
+## Day 15 — New Bugs Found (2026-04-02 Playwright PDF comparison)
+
+> Compared: `Resume_10March.pdf` (original) vs `tailored_Resume_10March_113.tex` (session 113)
+
+---
+
+## BUG-020 — Section Order Wrong (Experience Before Education)
+
+**Status:** FIXED
+**Severity:** High
+**Found:** 2026-04-02 Playwright session
+**Location:** `backend/templates/professional.tex`, `backend/modules/export/latex_generator.py`
+
+### Description
+| | Original PDF | Generated PDF |
+|---|---|---|
+| Order | Education → Skills → Experience → Projects → Leadership | Experience → Skills → Projects → Education → Leadership |
+
+Original is a student resume (Expected May 2026). Education should come first.
+
+### Root Cause
+Two compounding issues:
+1. `detect_candidate_type()` returns `'experienced'` for any candidate with >200 chars of experience content — ignores that the degree is still in progress ("Expected May 2026")
+2. `professional.tex` template hardcodes Experience as the first section via placeholder order
+3. `build_stage1_prompt` FINAL REMINDER explicitly says "SECTION ORDER (experienced): Experience → Skills → Projects → Education → Leadership"
+
+---
+
+## BUG-021 — Missing Bachelor's Degree (Bharati Vidyapeeth Entirely Absent)
+
+**Status:** FIXED
+**Severity:** High
+**Found:** 2026-04-02 Playwright session
+**Location:** `backend/modules/export/latex_generator.py` → `build_data_summary`, `post_process_latex`
+
+### Description
+Original PDF has two education entries:
+1. Pace University — Master of Science | GPA: 3.84/4.0 | Expected May 2026
+2. Bharati Vidyapeeth — Bachelor of Technology | GPA: 3.56/4.0 | July 2023
+
+Generated output has only Pace University. Bharati Vidyapeeth is completely absent.
+
+### Root Cause
+The PDF parser creates a section boundary at "Relevant Coursework:" and assigns everything after it (including Bharati Vidyapeeth) to a `coursework` section. DB confirms:
+- `education` section content_text = Pace University only
+- `coursework` section content_text = **Bharati Vidyapeeth + Bachelor's degree**
+
+In `build_data_summary`, line 249-250:
+```python
+if sec_type == 'coursework' and candidate_type == 'experienced':
+    continue  # strips the entire section including Bachelor's data
+```
+Since the candidate is misclassified as 'experienced' (BUG-020), the coursework section (containing the bachelor's degree) is silently dropped. No post-processor rebuilds education from both sections.
+
+---
+
+## BUG-022 — Duplicate Leadership & Activities Section Header
+
+**Status:** FIXED
+**Severity:** Medium
+**Found:** 2026-04-02 Playwright session
+**Location:** `backend/modules/export/latex_generator.py` → `_build_leadership_latex`, `_replace_latex_section`
+
+### Description
+Generated .tex has two consecutive `\resumesection{Leadership \& Activities}` headers (lines 99–100), rendering as a double underlined section title in the PDF.
+
+### Root Cause
+`_build_leadership_latex()` starts its output with `\resumesection{Leadership \& Activities}`.
+`_replace_latex_section()` preserves the existing `\resumesection` from LLM output as `m.group(1)` and prepends it to `new_content`. Since `new_content` also starts with the section header, the result contains two headers.
+
+---
+
+## BUG-023 — Relevant Coursework Entirely Missing
+
+**Status:** FIXED
+**Severity:** Medium
+**Found:** 2026-04-02 Playwright session
+**Location:** `backend/modules/export/latex_generator.py` → `detect_candidate_type`, `build_data_summary`
+
+### Description
+Original PDF shows "Relevant Coursework: Distributed Systems, Cloud Architecture, Microservices, Database Systems, Software Engineering" inline under the Pace University education entry. Generated output has no coursework at all.
+
+### Root Cause
+`detect_candidate_type()` returns `'experienced'` → `build_data_summary` strips the `coursework` section entirely for experienced candidates (line 249). The actual coursework subjects are in the section label ("Relevant Coursework: Distributed Systems..."), not passed to the LLM. Also directly linked to BUG-021 (parser puts Bharati Vidyapeeth inside the coursework section).
+
+---
+
+## BUG-024 — CodeChef Leadership Entry Wrong (Dates and Description Stripped)
+
+**Status:** FIXED
+**Severity:** High
+**Found:** 2026-04-02 Playwright session
+**Location:** `backend/modules/tailor/resume_tailor.py`, `backend/modules/export/latex_generator.py`
+
+### Description
+Original PDF has two distinct Leadership entries:
+1. AWS Cloud Club, Technical Contributor — Sept 2024 – Present (with description)
+2. CodeChef Programming Club, Technical Mentor — Bharati Vidyapeeth — Jan 2022 – May 2023 (with "Mentored 30+ students..." bullet)
+
+Generated output has ONE entry (AWS) with CodeChef embedded as a bullet item without dates or description.
+
+### Root Cause (2-part)
+**Part 1 — Tailoring strips dates:**  
+`'leadership'` is included in `tailorable_types` set in `resume_tailor.py`. NVIDIA NIM rewrites the leadership section and removes the CodeChef dates ("Jan 2022 – May 2023") and description. DB confirms tailored_text = "...CodeChef Programming Club, Technical Mentor — Bharati Vidyapeeth Deemed University" (no date, no mentor bullet).
+
+**Part 2 — `_build_leadership_latex` silently drops dateless lines:**  
+The post-processor detects headings by date presence. CodeChef without dates → `has_date = False` → `else: i += 1` (silently skipped). Instead, the CodeChef line falls into the previous entry's description loop and becomes a bullet under AWS Cloud Club.
+
+---
+
 ## Root Cause Analysis — Why "Fixed" Bugs Regressed
 
 All 5 re-opened bugs (BUG-008, 009, 011, 012, 013) had prompt-only fixes that the LLM ignored.
@@ -344,14 +456,19 @@ When the LLM estimates the output will overflow one page, it silently:
 
 ---
 
-## Open Bugs Summary (Updated 2026-04-01)
+## Open Bugs Summary (Updated 2026-04-02 — Day 15)
 
 | ID | Bug | Layer | Severity | Status |
 |----|-----|-------|----------|--------|
-| BUG-008 | 2 experience bullets dropped (AWS load balancing + Python/SQL dashboards) | LaTeX gen | High | OPEN |
-| BUG-009 | Technologies lines missing from all 3 projects | LaTeX gen | High | OPEN |
-| BUG-011 | Coursework appears as separate section (experienced candidate) | LaTeX gen | Medium | OPEN |
-| BUG-012 | Project bullets cut 4-5→3 per project | LaTeX gen | High | OPEN |
-| BUG-013 | Leadership & Activities entirely missing | LaTeX gen | High | OPEN |
-| BUG-018 | Projects in wrong order | LaTeX gen | Medium | OPEN |
-| BUG-019 | Project names truncated | LaTeX gen | Medium | OPEN |
+| BUG-008 | 2 experience bullets dropped | LaTeX gen | High | **FIXED** — post_process_latex after Stage 2 |
+| BUG-009 | Technologies lines missing from all 3 projects | LaTeX gen | High | **FIXED** — _build_projects_latex post-processor |
+| BUG-011 | Coursework appears as separate section | LaTeX gen | Medium | **FIXED** — strip from source data |
+| BUG-012 | Project bullets cut 4-5→3 per project | LaTeX gen | High | **FIXED** — _build_projects_latex post-processor |
+| BUG-013 | Leadership & Activities entirely missing | LaTeX gen | High | **FIXED** — _build_leadership_latex post-processor |
+| BUG-018 | Projects in wrong order | LaTeX gen | Medium | **FIXED** — post-processor preserves source order |
+| BUG-019 | Project names truncated | LaTeX gen | Medium | **FIXED** — post-processor uses exact names from source |
+| BUG-020 | Section order wrong (Experience before Education) | Template + detect | High | **FIXED** — `professional.tex` reordered; `detect_candidate_type` checks Expected date |
+| BUG-021 | Missing Bachelor's degree (Bharati Vidyapeeth) | Parser + gen | High | **FIXED** — `_build_education_latex` reads both education + coursework sections |
+| BUG-022 | Duplicate Leadership section header | post_process | Medium | **FIXED** — removed `\resumesection` from `_build_leadership_latex` output |
+| BUG-023 | Relevant Coursework entirely missing | detect + gen | Medium | **FIXED** — candidate now 'fresher'; coursework inlined in `_build_education_latex` |
+| BUG-024 | CodeChef entry wrong (dates stripped by tailor) | Tailor + post_process | High | **FIXED** — `leadership` removed from `TAILORABLE_SECTIONS`; `_build_leadership_latex` handles dateless headings |

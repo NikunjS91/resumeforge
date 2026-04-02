@@ -46,13 +46,23 @@ def detect_candidate_type(sections: list) -> str:
     """
     Detect if candidate is experienced or fresher based on sections.
     Returns 'experienced' or 'fresher'.
+
+    A candidate with an in-progress degree (Expected date in the future) is
+    classified as 'fresher' regardless of work experience, so Education comes
+    first and coursework is preserved — matching the original resume layout.
     """
+    # If any education entry has a future/expected graduation → student layout
+    for s in sections:
+        if s.get('section_type') == 'education':
+            content = s.get('content_text', '') + ' ' + s.get('section_label', '')
+            if re.search(r'\bExpected\b', content, re.IGNORECASE):
+                return 'fresher'
+
     experience_section = next(
         (s for s in sections if s.get('section_type') == 'experience'), None
     )
     if experience_section:
         content = experience_section.get('content_text', '')
-        # If experience content is substantial (> 200 chars), likely experienced
         if len(content) > 200:
             return 'experienced'
     return 'fresher'
@@ -71,42 +81,118 @@ def _strip_bullet(line: str) -> str:
     return _re.sub(r'^[•\-\*·\s]+', '', line).strip()
 
 
+def _normalize_project_content(content: str) -> list:
+    """
+    Normalize project content where bullets may span multiple lines.
+    Handles formats like:
+      "•\\nLine 1\\nwrapped continuation\\n•\\nLine 2"
+      "Technologies: ..." (no leading bullet — kept as bullet-like)
+    Returns a list of clean lines where each bullet is a single string.
+    """
+    raw = content.splitlines()
+    result = []
+    in_bullet = False  # True when the last appended line was a bullet
+
+    i = 0
+    while i < len(raw):
+        line = raw[i]
+        stripped = line.strip()
+
+        if not stripped:
+            in_bullet = False
+            i += 1
+            continue
+
+        # Lone bullet char on its own line — merge with next text line
+        if stripped in ('•', '-', '*', '·'):
+            if i + 1 < len(raw):
+                next_stripped = raw[i + 1].strip()
+                if next_stripped and next_stripped not in ('•', '-', '*', '·'):
+                    result.append('• ' + next_stripped)
+                    # Technologies is always the last item — don't treat as continuable bullet
+                    in_bullet = not next_stripped.lower().startswith('technologies:')
+                    i += 2
+                    continue
+            # Lone bullet with nothing after — skip
+            i += 1
+            continue
+
+        # Technologies: line — treat as a special bullet-like line
+        if stripped.lower().startswith('technologies:'):
+            result.append(line)
+            in_bullet = False
+            i += 1
+            continue
+
+        # Normal bullet line (starts with bullet char after text)
+        if stripped.startswith(('•', '-', '*', '·')):
+            result.append(line)
+            # Technologies is always the last bullet — no continuation expected after it
+            in_bullet = 'technologies' not in stripped.lower()
+            i += 1
+            continue
+
+        # Non-bullet text line
+        if in_bullet and result:
+            # Continuation of the previous wrapped bullet — join onto last line
+            result[-1] = result[-1].rstrip() + ' ' + stripped
+            i += 1
+            continue
+
+        # Project heading
+        result.append(line)
+        in_bullet = False
+        i += 1
+
+    return result
+
+
 def _parse_projects(content: str) -> list:
     """
     Parse individual projects from the projects section content.
     Returns list of dicts: {name, github_suffix, bullets, has_technologies, tech_line, raw_block}
+    Handles bullet-on-separate-line format and Technologies: lines without leading bullet.
     """
     projects = []
-    lines = content.splitlines()
+    lines = _normalize_project_content(content)
     current_name = ""
     current_github = ""
     current_lines = []
+
+    def _save_project():
+        if not current_name:
+            return
+        block = '\n'.join(current_lines)
+        # Technologies: find any line containing "technologies:" (with or without leading bullet)
+        tech_line = next(
+            (_strip_bullet(l) for l in current_lines if 'technologies' in l.lower()),
+            ""
+        )
+        bullet_count = sum(
+            1 for l in current_lines
+            if l.strip() and 'technologies' not in l.lower()
+        )
+        projects.append({
+            'name': current_name,
+            'github_suffix': current_github,
+            'bullets': bullet_count,
+            'has_technologies': bool(tech_line),
+            'tech_line': tech_line,
+            'raw_block': block
+        })
 
     for line in lines:
         stripped = line.strip()
         if not stripped:
             continue
-        is_bullet = stripped.startswith(('•', '-', '*', '·'))
-        # A project heading: not a bullet
+        # Treat as bullet if: starts with bullet char OR is a Technologies line
+        is_bullet = (
+            stripped.startswith(('•', '-', '*', '·')) or
+            stripped.lower().startswith('technologies:')
+        )
         if not is_bullet:
-            # Save previous project
-            if current_name:
-                block = '\n'.join(current_lines)
-                bullet_count = _count_bullets(block)
-                # Technologies line: bullet containing "Technologies:"
-                tech_line = next(
-                    (_strip_bullet(l) for l in current_lines
-                     if 'technologies' in l.lower() and l.strip().startswith(('•', '-', '*', '·'))),
-                    ""
-                )
-                projects.append({
-                    'name': current_name,
-                    'github_suffix': current_github,
-                    'bullets': bullet_count,
-                    'has_technologies': bool(tech_line),
-                    'tech_line': tech_line,
-                    'raw_block': block
-                })
+            # Save previous project before starting new one
+            _save_project()
             # Parse "Project Name GitHub" or "Project Name" from heading
             if ' GitHub' in stripped:
                 current_name = stripped[:stripped.rfind(' GitHub')].strip()
@@ -119,22 +205,7 @@ def _parse_projects(content: str) -> list:
             current_lines.append(line)
 
     # Save last project
-    if current_name:
-        block = '\n'.join(current_lines)
-        bullet_count = _count_bullets(block)
-        tech_line = next(
-            (_strip_bullet(l) for l in current_lines
-             if 'technologies' in l.lower() and l.strip().startswith(('•', '-', '*', '·'))),
-            ""
-        )
-        projects.append({
-            'name': current_name,
-            'github_suffix': current_github,
-            'bullets': bullet_count,
-            'has_technologies': bool(tech_line),
-            'tech_line': tech_line,
-            'raw_block': block
-        })
+    _save_project()
 
     return projects
 
@@ -386,7 +457,6 @@ TEMPLATE (replace LATEX_* tokens only — do NOT change any LaTeX commands or do
 FINAL CHECKS (verify before outputting):
 ════════════════════════════
 ✓ LATEX_LEADERSHIP_BLOCK is NOT empty — source has a leadership section, it MUST appear
-✓ LATEX_COURSEWORK_BLOCK is an empty string — experienced candidate, no coursework section
 ✓ Projects appear in ORDER: [PROJECT 1] first, [PROJECT 2] second, [PROJECT 3] third
 ✓ Each project uses its EXACT NAME from the "EXACT NAME:" annotation — not shortened
 ✓ Each project annotated with Technologies has it as the last \\item \\textbf{{Technologies:}}
@@ -488,10 +558,9 @@ Before writing your output, verify:
 ✓ ALL PROJECTS present (count them in the source and match that count)
 ✓ LEADERSHIP section is present if source has it — NEVER drop Leadership & Activities
 ✓ Compressed to fit close to 1 page (but did NOT remove projects or sections to achieve this)
-✓ SECTION ORDER (experienced): Experience → Skills → Projects → Education → Leadership
-  CHECK: Does Experience come BEFORE Education? If not, fix it now.
+✓ SECTION ORDER: Education → Skills → Experience → Projects → Leadership
+  CHECK: Does Education come BEFORE Experience? If not, fix it now.
 ✓ NO Contact/Personal Info section in the body — contact info is in the header only
-✓ NO Coursework section (experienced candidates do not list coursework)
 
 Now generate ONLY the complete LaTeX code.
 Start with \\documentclass — end with \\end{{document}}.
@@ -522,7 +591,7 @@ def call_ollama(prompt: str, system: str) -> str:
 
 
 def call_nvidia(prompt: str, system: str) -> str:
-    """Call NVIDIA NIM for LaTeX generation."""
+    """Call NVIDIA NIM for LaTeX generation (non-streaming)."""
     api_key = os.getenv('NVIDIA_API_KEY', '')
     if not api_key:
         raise ValueError("NVIDIA_API_KEY not set")
@@ -540,38 +609,13 @@ def call_nvidia(prompt: str, system: str) -> str:
         "temperature": 0.3,
         "top_p": 0.9,
         "max_tokens": 4096,
-        "stream": True
     }
+    # Non-streaming: avoids SSE JSON parsing issues with LaTeX backslashes
     response = requests.post(NVIDIA_URL, headers=headers, json=payload,
-                             stream=True, timeout=GENERATION_TIMEOUT)
+                             timeout=GENERATION_TIMEOUT)
     response.raise_for_status()
-
-    result = ""
-    for line in response.iter_lines():
-        if line and line.startswith(b'data: '):
-            data = line[6:]
-            if data == b'[DONE]':
-                break
-            try:
-                chunk = json.loads(data)
-            except json.JSONDecodeError:
-                # NVIDIA streaming sometimes returns LaTeX with unescaped backslashes
-                # (e.g. \href, \hfill) which are invalid JSON escape sequences.
-                # Fix: escape any lone backslash not already a valid JSON escape.
-                # Note: b'\\\\' = regex pattern matching ONE literal backslash
-                #       b'\\\\\\\\' = replacement inserting TWO backslashes
-                fixed = re.sub(b'\\\\(?!["\\\\/bfnrtu0-9])', b'\\\\\\\\', data)
-                try:
-                    chunk = json.loads(fixed)
-                except Exception:
-                    continue
-            try:
-                delta = chunk.get('choices', [{}])[0].get('delta', {}).get('content', '')
-                if delta:
-                    result += delta
-            except Exception:
-                pass
-    return result.strip()
+    data = response.json()
+    return data["choices"][0]["message"]["content"].strip()
 
 
 def extract_latex(raw_output: str) -> str:
@@ -647,8 +691,8 @@ def _replace_latex_section(latex: str, section_name: str, new_content: str) -> s
         r'(.*?)'
         r'(?=(\\resumesection|\\end\{document\}))'
     )
-    replacement = r'\1\n' + new_content + r'\n'
-    result = _re.sub(pattern, replacement, latex, flags=_re.DOTALL)
+    # Use a lambda to avoid regex escape issues with LaTeX backslashes in new_content
+    result = _re.sub(pattern, lambda m: m.group(1) + '\n' + new_content + '\n', latex, flags=_re.DOTALL)
     if result == latex:
         logger.warning(f"_replace_latex_section: section '{section_name}' not found in output")
     return result
@@ -696,23 +740,151 @@ def post_process_latex(latex: str, sections: list, candidate_type: str) -> str:
             # Only replace if leadership section exists in LLM output; if missing, append it
             import re as _re
             if _re.search(r'\\resumesection\{Leadership', latex):
+                # Replace body only — _replace_latex_section preserves the existing \resumesection header
                 leadership_latex = _build_leadership_latex(leadership_content)
                 latex = _replace_latex_section(latex, r'Leadership \& Activities', leadership_latex)
             else:
-                # Append before \end{document}
-                leadership_latex = _build_leadership_latex(leadership_content)
+                # Section not in LLM output — append with header before \end{document}
+                leadership_latex = (
+                    r'\resumesection{Leadership \& Activities}' + '\n'
+                    + _build_leadership_latex(leadership_content)
+                )
                 latex = latex.replace(
                     r'\end{document}',
                     leadership_latex + '\n' + r'\end{document}'
                 )
             logger.info("Post-processed: replaced/appended Leadership section")
 
-    # Fix Coursework for experienced candidates (BUG-011)
-    if candidate_type == 'experienced':
-        latex = _remove_coursework_section(latex)
-        logger.info("Post-processed: removed Coursework section (experienced candidate)")
+    # Fix Education (BUG-021/023) — build from both education + coursework sections
+    edu_latex = _build_education_latex(sections, candidate_type)
+    if edu_latex:
+        latex = _replace_latex_section(latex, 'Education', edu_latex)
+        logger.info("Post-processed: replaced Education section with Python-built version")
+
+    # Remove standalone Coursework section if present (BUG-011) — education post-processor
+    # inlines coursework under the education entry instead
+    latex = _remove_coursework_section(latex)
 
     return latex
+
+
+def _build_education_latex(sections: list, candidate_type: str) -> str:
+    """
+    Pre-build the LaTeX for the Education section in Python.
+    Reads both the 'education' section and the 'coursework' section — the PDF
+    parser often misclassifies the second university entry as coursework content
+    (BUG-021). Also inlines Relevant Coursework under the first entry for
+    fresher candidates (BUG-023).
+    """
+    import re as _re
+
+    def _parse_edu_entry(text: str):
+        """
+        Parse a raw education block into (school, location, degree_gpa, date).
+        Handles formats like:
+          "Pace University, Seidenberg School of Computer Science New York, NY
+           Master of Science in Computer Science | GPA: 3.84/4.0 Expected May 2026"
+          "Bharati Vidyapeeth Deemed University Mumbai, India
+           Bachelor of Technology in Information Technology | GPA: 3.56/4.0 July 2023"
+        """
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        if not lines:
+            return None
+
+        # Line 0: "School Name   City, State/Country"
+        # Heuristic: last token(s) after the last 2-word location pattern
+        school_line = lines[0]
+        # Try to split off a trailing location like "New York, NY" or "Mumbai, India"
+        loc_match = _re.search(
+            r'\s{2,}([A-Z][a-zA-Z\s]+,\s*[A-Z][a-zA-Z\s]+)$', school_line
+        )
+        if loc_match:
+            school = school_line[:loc_match.start()].strip()
+            location = loc_match.group(1).strip()
+        else:
+            # Fallback: known city patterns
+            known_loc = _re.search(
+                r'(New York,?\s*NY|Mumbai,?\s*India|Boston,?\s*MA|San Francisco,?\s*CA'
+                r'|Los Angeles,?\s*CA|Chicago,?\s*IL|Seattle,?\s*WA)',
+                school_line, _re.IGNORECASE
+            )
+            if known_loc:
+                school = school_line[:known_loc.start()].strip()
+                location = known_loc.group(0).strip()
+            else:
+                school = school_line
+                location = ""
+
+        # Line 1: "Degree | GPA: X.XX/Y  Date"  or  "Degree | GPA: X.XX/Y  Expected Month Year"
+        if len(lines) < 2:
+            return (school, location, "", "")
+
+        degree_line = lines[1]
+        # Extract date — "Expected Month Year" or "Month Year" or "Year" at the end
+        date_match = _re.search(
+            r'(Expected\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+\d{4}'
+            r'|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+\d{4}'
+            r'|\d{4})$',
+            degree_line
+        )
+        if date_match:
+            date = date_match.group(0).strip()
+            degree_raw = degree_line[:date_match.start()].strip().rstrip('|').strip()
+        else:
+            date = ""
+            degree_raw = degree_line
+
+        # Normalise separator: "Master of Science | GPA: 3.84/4.0" → "Master of Science — GPA: 3.84/4.0"
+        degree_gpa = _re.sub(r'\s*\|\s*', ' — ', degree_raw)
+
+        return (school, location, degree_gpa, date)
+
+    edu_entries = []
+
+    # Primary education section
+    edu_section = next((s for s in sections if s.get('section_type') == 'education'), None)
+    if edu_section:
+        content = edu_section.get('content_text', '').strip()
+        if content:
+            parsed = _parse_edu_entry(content)
+            if parsed:
+                edu_entries.append(parsed)
+
+    # Coursework section — content_text often contains misclassified second education entry
+    cw_section = next((s for s in sections if s.get('section_type') == 'coursework'), None)
+    cw_subjects = ""
+    if cw_section:
+        # Actual coursework subjects live in the section_label
+        label = cw_section.get('section_label', '')
+        subj_match = _re.search(r'Relevant Coursework[:\s]+(.+)', label, _re.IGNORECASE)
+        if subj_match:
+            cw_subjects = subj_match.group(1).strip()
+
+        # content_text is the misclassified second university entry
+        cw_content = cw_section.get('content_text', '').strip()
+        if cw_content:
+            parsed = _parse_edu_entry(cw_content)
+            if parsed and parsed[0]:  # has a school name
+                edu_entries.append(parsed)
+
+    if not edu_entries:
+        return ""
+
+    latex_lines = []
+    for idx, (school, location, degree_gpa, date) in enumerate(edu_entries):
+        school_esc = school.replace('&', r'\&')
+        degree_esc = degree_gpa.replace('&', r'\&').replace('%', r'\%')
+        latex_lines.append(
+            f"\\resumesubheading{{{school_esc}}}{{{date}}}{{{degree_esc}}}{{{location}}}"
+        )
+        # Inline coursework under the first entry for fresher candidates
+        if idx == 0 and cw_subjects and candidate_type == 'fresher':
+            cw_esc = cw_subjects.replace('&', r'\&')
+            latex_lines.append(
+                f"\\textit{{Relevant Coursework:}} {cw_esc}"
+            )
+
+    return '\n'.join(latex_lines)
 
 
 def _build_leadership_latex(content: str) -> str:
@@ -726,7 +898,7 @@ def _build_leadership_latex(content: str) -> str:
     if not lines:
         return ""
 
-    latex_lines = [r"\resumesection{Leadership \& Activities}"]
+    latex_lines = []
     i = 0
     while i < len(lines):
         line = lines[i].strip()
@@ -755,7 +927,15 @@ def _build_leadership_latex(content: str) -> str:
                     r'\b(20\d\d|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|Present)\b',
                     next_line
                 ))
-                if next_has_date and i < len(lines) - 1:
+                # Also stop if the next line looks like a new heading (capitalized org name,
+                # no leading bullet) — handles date-stripped entries from old tailoring
+                next_is_heading = (
+                    not next_line.startswith(('•', '-', '*', '·'))
+                    and len(next_line) > 5
+                    and next_line[0].isupper()
+                    and not next_has_date
+                )
+                if (next_has_date and i < len(lines) - 1) or (next_is_heading and desc_lines):
                     break
                 desc_lines.append(next_line)
                 i += 1
@@ -771,7 +951,45 @@ def _build_leadership_latex(content: str) -> str:
                         latex_lines.append(f"\\item {d_esc}")
                 latex_lines.append(r"\end{itemize}")
         else:
-            i += 1
+            # Line has no date — treat as a heading with empty dates if it looks like an
+            # org/role name (not a description sentence: no leading bullet, starts with capital)
+            is_heading_like = (
+                not line.startswith(('•', '-', '*', '·'))
+                and len(line) > 5
+                and line[0].isupper()
+            )
+            if is_heading_like:
+                role = line
+                dates = ""
+                desc_lines = []
+                i += 1
+                while i < len(lines):
+                    next_line = lines[i].strip()
+                    next_has_date = bool(_re.search(
+                        r'\b(20\d\d|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|Present)\b',
+                        next_line
+                    ))
+                    next_is_heading = (
+                        not next_line.startswith(('•', '-', '*', '·'))
+                        and len(next_line) > 5
+                        and next_line[0].isupper()
+                        and not next_has_date
+                    )
+                    if (next_has_date and i < len(lines) - 1) or (next_is_heading and desc_lines):
+                        break
+                    desc_lines.append(next_line)
+                    i += 1
+                role_esc = role.replace('&', r'\&')
+                latex_lines.append(f"\\resumesubheading{{{role_esc}}}{{{dates}}}{{}}{{}}")
+                if desc_lines:
+                    latex_lines.append(r"\begin{itemize}")
+                    for d in desc_lines:
+                        if d:
+                            d_esc = d.replace('&', r'\&').replace('%', r'\%')
+                            latex_lines.append(f"\\item {d_esc}")
+                    latex_lines.append(r"\end{itemize}")
+            else:
+                i += 1
 
     return '\n'.join(latex_lines)
 
@@ -838,10 +1056,8 @@ def generate_latex_stage1(
 
     latex = extract_latex(raw)
 
-    # ── Post-process: replace Projects/Leadership with Python-built versions ──
-    # The LLM regenerates the full document and consistently mangles these sections.
-    # Post-processing guarantees correctness regardless of LLM behaviour.
-    latex = post_process_latex(latex, sections, candidate_type)
+    # NOTE: post_process_latex is intentionally NOT called here.
+    # It runs in export.py AFTER Stage 2 review, so Stage 2 cannot undo it.
 
     # Validate the template placeholders were filled (not left as LATEX_*)
     unfilled = [p for p in ["LATEX_FULL_NAME", "LATEX_EMAIL", "LATEX_EDUCATION_BLOCK"]
