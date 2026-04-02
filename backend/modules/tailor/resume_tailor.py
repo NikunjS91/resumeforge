@@ -64,8 +64,8 @@ def tailor_resume_oneshot(
     required_str   = ", ".join(required_skills[:20]) if required_skills else "not specified"
     nicetohave_str = ", ".join(nice_to_have_skills[:10]) if nice_to_have_skills else "none"
 
-    # Sections to tailor — skip contact and education
-    tailorable_types = {"experience", "projects", "skills", "summary", "leadership", "unknown"}
+    # Sections to tailor — skip contact, education, and leadership (dates/entries must not be modified)
+    tailorable_types = {"experience", "projects", "skills", "summary", "unknown"}
     sections_to_tailor = [
         s for s in resume_sections
         if s.get("section_type") in tailorable_types and s.get("content_text", "").strip()
@@ -215,13 +215,13 @@ def tailor_section(
 
 # ─── MAIN TAILOR PIPELINE ────────────────────────────────────────────────────
 
-# Sections worth tailoring — contact and education are not tailored
+# Sections worth tailoring — contact, education, and leadership are not tailored
+# Leadership is excluded because tailoring strips dates and descriptions from entries
 TAILORABLE_SECTIONS = {
     "experience",
     "projects",
     "skills",
     "summary",
-    "leadership",
     "unknown",      # catches any unrecognised but valuable sections
 }
 
