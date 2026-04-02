@@ -80,15 +80,20 @@ def export_pdf(
 
         try:
             tailored_data = json.loads(session.tailored_json or "{}")
+            # Leadership uses original_text — tailoring can strip dates/descriptions
             sections_data = [
                 {
                     "section_type":   s.get("section_type"),
                     "section_label":  s.get("section_label", ""),
-                    "content_text":   s.get("tailored_text", s.get("content_text", "")),
+                    "content_text":   (
+                        s.get("original_text", s.get("content_text", ""))
+                        if s.get("section_type") == "leadership"
+                        else s.get("tailored_text", s.get("original_text", s.get("content_text", "")))
+                    ),
                     "position_index": s.get("position_index", 0),
                 }
                 for s in tailored_data.get("sections", [])
-                if s.get("tailored_text", s.get("content_text", "")).strip()
+                if s.get("tailored_text", s.get("original_text", s.get("content_text", ""))).strip()
             ]
         except Exception as e:
             raise HTTPException(status_code=500,
@@ -414,15 +419,20 @@ def export_pdf_async(
                 detail=f"Tailoring session {request.session_id} not found.")
         try:
             tailored_data = json.loads(session.tailored_json or "{}")
+            # Leadership uses original_text — tailoring can strip dates/descriptions
             sections_data = [
                 {
                     "section_type":   s.get("section_type"),
                     "section_label":  s.get("section_label", ""),
-                    "content_text":   s.get("tailored_text", s.get("content_text", "")),
+                    "content_text":   (
+                        s.get("original_text", s.get("content_text", ""))
+                        if s.get("section_type") == "leadership"
+                        else s.get("tailored_text", s.get("original_text", s.get("content_text", "")))
+                    ),
                     "position_index": s.get("position_index", 0),
                 }
                 for s in tailored_data.get("sections", [])
-                if s.get("tailored_text", s.get("content_text", "")).strip()
+                if s.get("tailored_text", s.get("original_text", s.get("content_text", ""))).strip()
             ]
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to parse session: {e}")
