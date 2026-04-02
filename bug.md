@@ -344,14 +344,20 @@ When the LLM estimates the output will overflow one page, it silently:
 
 ---
 
-## Open Bugs Summary (Updated 2026-04-01)
+## Open Bugs Summary (Updated 2026-04-01 — Day 14 complete)
+
+**All bugs fixed.** Open bugs: 0
 
 | ID | Bug | Layer | Severity | Status |
 |----|-----|-------|----------|--------|
-| BUG-008 | 2 experience bullets dropped (AWS load balancing + Python/SQL dashboards) | LaTeX gen | High | OPEN |
-| BUG-009 | Technologies lines missing from all 3 projects | LaTeX gen | High | OPEN |
-| BUG-011 | Coursework appears as separate section (experienced candidate) | LaTeX gen | Medium | OPEN |
-| BUG-012 | Project bullets cut 4-5→3 per project | LaTeX gen | High | OPEN |
-| BUG-013 | Leadership & Activities entirely missing | LaTeX gen | High | OPEN |
-| BUG-018 | Projects in wrong order | LaTeX gen | Medium | OPEN |
-| BUG-019 | Project names truncated | LaTeX gen | Medium | OPEN |
+| BUG-008 | 2 experience bullets dropped | LaTeX gen | High | **FIXED** — post_process_latex after Stage 2 |
+| BUG-009 | Technologies lines missing from all 3 projects | LaTeX gen | High | **FIXED** — _build_projects_latex post-processor |
+| BUG-011 | Coursework appears as separate section | LaTeX gen | Medium | **FIXED** — strip from source data |
+| BUG-012 | Project bullets cut 4-5→3 per project | LaTeX gen | High | **FIXED** — _build_projects_latex post-processor |
+| BUG-013 | Leadership & Activities entirely missing | LaTeX gen | High | **FIXED** — _build_leadership_latex post-processor |
+| BUG-018 | Projects in wrong order | LaTeX gen | Medium | **FIXED** — post-processor preserves source order |
+| BUG-019 | Project names truncated | LaTeX gen | Medium | **FIXED** — post-processor uses exact names from source |
+
+### Root Fix (Day 14)
+Replaced prompt-only rules with a Python post-processor (`post_process_latex`) that runs AFTER Stage 2 review.
+Python builds the Projects and Leadership sections directly from source data — LLM cannot corrupt what it never writes.

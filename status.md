@@ -7,12 +7,15 @@
 
 ## Current Focus
 
-**Day 13 — Speed Optimization: Auto-Save Master LaTeX** — COMPLETE
-- Fixed `_run_export_job` (async) and `export_pdf` (sync) in `backend/routers/export.py`
-- Auto-saves `latex_final` → `resume.master_latex` after every first generation
-- Tested: 2nd export dropped from ~4 min → **31s** (surgical path)
-- Full UI pipeline tested with Playwright: all 5 steps pass, PDF renders correctly
-- ATS Score: 94/100, all 7 skills matched
+**Day 14 — LaTeX Quality: Post-Processor Approach** — COMPLETE
+- Added `post_process_latex()` that runs AFTER Stage 2 in `export.py` (Stage 2 can no longer undo corrections)
+- `_build_projects_latex()`: rebuilds all 3 projects from source data — full names, all bullets, Technologies lines, correct order
+- `_build_leadership_latex()`: rebuilds Leadership section — never dropped
+- `_normalize_project_content()`: handles both raw DB format (lone bullet + wrapped lines) and tailored format (inline bullets)
+- `call_nvidia()`: switched to non-streaming — eliminates SSE JSON parsing issues
+- Fixed `_replace_latex_section` lambda replacement (Python 3.13 re.error for LaTeX backslashes)
+- **All 7 open bugs fixed**: BUG-008, 009, 011, 012, 013, 018, 019
+- Verified: 6 experience bullets, 3 Technologies lines, Leadership present, full project names, correct order, no coursework
 
 ---
 
@@ -45,6 +48,7 @@
 | 11  | Surgical LaTeX path: master_latex stored in DB, minimal edits per JD | Done |
 | 12  | Claude Code context engineering: CLAUDE.md + anti-hallucination rules | Done |
 | 13  | Auto-save master LaTeX after first generation (speed fix) | Done |
+| 14  | LaTeX quality: post-processor for Projects, Leadership, Coursework | Done |
 
 ---
 
@@ -70,8 +74,11 @@
 | BUG-016 | Export full generation exceeds frontend timeout | High | Fixed |
 | BUG-017 | Password field missing autocomplete attribute | Low | Fixed |
 
+| BUG-018 | Projects output in wrong order | Medium | Fixed |
+| BUG-019 | Project names truncated/shortened | Medium | Fixed |
+
 **Open Bugs:** 0
-**Fixed Bugs:** 17
+**Fixed Bugs:** 19
 
 ---
 
