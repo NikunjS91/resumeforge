@@ -457,7 +457,47 @@ When the LLM estimates the output will overflow one page, it silently:
 
 ---
 
-## Open Bugs Summary (Updated 2026-04-02 — Day 15)
+---
+
+## BUG-025 — ATSScore Fires Twice (hasFired Ref Guard Bypassed)
+
+**Status:** OPEN
+**Severity:** Medium
+**Found:** 2026-04-03 Playwright session
+**Location:** `frontend/src/components/ATSScore.jsx`, `frontend/src/pages/Dashboard.jsx`
+
+### Description
+During the full pipeline run (Steps 1–5), the ATS scoring API is called **twice** for the same session. Both calls use the same props (resumeId, jobId, sessionId). Observed in browser console:
+- First call: at ~293s (correct — triggered by "Check ATS Score →" click)
+- Second call: at ~493s (~200s later, during the PDF export phase)
+
+### Observed Symptom
+```
+🔍 ATSScore: Starting scoreBoth() {resumeId: 50, jobId: 88, sessionId: 116}  ← first
+🔍 ATSScore: Starting scoreBoth() {resumeId: 50, jobId: 88, sessionId: 116}  ← second (200s later)
+```
+
+### Root Cause
+The `hasFired = useRef(false)` guard in `ATSScore.jsx` resets to `false` when the component unmounts and remounts. Something during the export phase (when `step5Active` flips to `true`) causes the ATSScore component to unmount and remount, bypassing the guard. Exact trigger is unconfirmed — likely related to Dashboard's React reconciliation when `ExportPanel` mounts alongside ATSScore.
+
+### Impact
+- 2× API calls to `/api/score/ats` per pipeline run
+- History page gains an extra `ats_scorer_v1` session entry with no PDF (the orphan score-only row visible in History)
+
+### Fix Applied
+Replaced the `hasFired = useRef(false)` guard (which resets on remount) with two module-level maps outside React's lifecycle:
+- `_pending: Map<sessionId, Promise>` — stores the in-flight `Promise.all` for both requests
+- `_results: Map<sessionId, {original, tailored}>` — stores completed results
+
+**On first mount:** creates the shared promise, subscribes to it.  
+**On StrictMode double-invoke / remount while in-flight:** finds existing promise in `_pending`, subscribes to it — no duplicate API calls.  
+**On remount after completion:** finds data in `_results`, restores state immediately and calls `onScored` — no API call at all.  
+**On error:** deletes from `_pending` to allow retry on next render.  
+Also added `cancelled` cleanup flag to prevent setState after unmount.
+
+---
+
+## Open Bugs Summary (Updated 2026-04-03 — Day 16)
 
 | ID | Bug | Layer | Severity | Status |
 |----|-----|-------|----------|--------|
@@ -473,3 +513,4 @@ When the LLM estimates the output will overflow one page, it silently:
 | BUG-022 | Duplicate Leadership section header | post_process | Medium | **FIXED** — removed `\resumesection` from `_build_leadership_latex` output |
 | BUG-023 | Relevant Coursework entirely missing | detect + gen | Medium | **FIXED** — candidate now 'fresher'; coursework inlined in `_build_education_latex` |
 | BUG-024 | CodeChef entry wrong (dates stripped by tailor) | Tailor + post_process + export | High | **FIXED** — `leadership` removed from `TAILORABLE_SECTIONS`; `_build_leadership_latex` handles dateless headings; `export.py` now reads `original_text` key (not `content_text`) |
+| BUG-025 | ATSScore fires twice — hasFired ref reset on remount during export | ATSScore.jsx | Medium | **FIXED** — module-level promise cache (`_pending`/`_results`); remounts subscribe to same in-flight promise, no duplicate API calls |

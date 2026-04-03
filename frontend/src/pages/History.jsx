@@ -13,7 +13,7 @@ export default function History() {
     try {
       const res = await api.get('/api/history/')
       setSessions(res.data.sessions || [])
-    } catch (e) {
+    } catch {
       setError('Failed to load history')
     } finally {
       setLoading(false)
@@ -29,7 +29,7 @@ export default function History() {
       a.download = `ResumeForge_${resumeName}_session${sessionId}.pdf`
       a.click()
       URL.revokeObjectURL(url)
-    } catch (e) {
+    } catch {
       alert('PDF not available — please re-export from the Pipeline tab')
     }
   }
