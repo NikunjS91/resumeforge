@@ -102,90 +102,105 @@ ResumeForge is a complete end-to-end resume optimization pipeline:
 
 ---
 
-## 🏗️ Project Structure
+## 🏗️ Architecture
 
+ResumeForge is a layered monolith: the React UI drives a FastAPI backend, the backend routes call focused modules for parsing, analysis, tailoring, scoring, and export, and all state lands in SQLite plus generated files on disk.
+
+```mermaid
+flowchart LR
+   U[User]
+   UI[React Frontend\nVite + TailwindCSS]
+   API[FastAPI App\nbackend/main.py]
+
+   subgraph B[Backend Routers]
+      AUTH[Auth\n/auth/login, /auth/signup, /auth/me]
+      PARSE[Parse\n/api/parse/upload, /reparse]
+      ANALYZE[Analyze\n/api/analyze/job]
+      TAILOR[Tailor\n/api/tailor/resume]
+      SCORE[Score\n/api/score/ats]
+      EXPORT[Export\n/api/export/pdf, /master-latex]
+      HISTORY[History\n/api/history]
+   end
+
+   subgraph M[Backend Modules]
+      PARSE_M[PDF/DOCX extraction\nsection detection]
+      ANALYZE_M[JD analyzer\nregex + LLM fallback]
+      TAILOR_M[Resume rewrite engine\nOllama or NVIDIA NIM]
+      SCORE_M[ATS scorer\nkeyword matching]
+      EXPORT_M[LaTeX generator / reviewer / surgeon\npdflatex compiler]
+   end
+
+   DB[(SQLite database)]
+   FILES[(Uploads, exports, templates)]
+   LLM[[Ollama + NVIDIA NIM]]
+   TEX[[pdflatex / BasicTeX]]
+
+   U --> UI --> API
+   API --> AUTH
+   API --> PARSE
+   API --> ANALYZE
+   API --> TAILOR
+   API --> SCORE
+   API --> EXPORT
+   API --> HISTORY
+
+   PARSE --> PARSE_M
+   ANALYZE --> ANALYZE_M
+   TAILOR --> TAILOR_M
+   SCORE --> SCORE_M
+   EXPORT --> EXPORT_M
+
+   AUTH --> DB
+   PARSE --> DB
+   ANALYZE --> DB
+   TAILOR --> DB
+   SCORE --> DB
+   EXPORT --> DB
+   HISTORY --> DB
+
+   PARSE_M --> FILES
+   EXPORT_M --> FILES
+   TAILOR_M --> LLM
+   ANALYZE_M --> LLM
+   EXPORT_M --> TEX
 ```
+
+### Layer Breakdown
+
+| Layer | Responsibility | Main Files |
+|-------|----------------|------------|
+| UI | Auth, step-by-step workflow, history tab | `frontend/src/App.jsx`, `frontend/src/pages/Dashboard.jsx` |
+| API | HTTP routing, validation, auth, orchestration | `backend/main.py`, `backend/routers/*.py` |
+| Domain logic | Parse, analyze, tailor, score, export | `backend/modules/*` |
+| Storage | Session data, resumes, jobs, exports | `backend/data/resumeforge.db`, `backend/data/uploads`, `backend/data/exports` |
+| AI + PDF | LLM calls and LaTeX compilation | `backend/modules/tailor/resume_tailor.py`, `backend/modules/export/*` |
+
+### Project Structure
+
+```text
 resumeforge/
 ├── backend/
-│   ├── main.py                         # FastAPI app entry point
-│   ├── database.py                     # SQLAlchemy session + migrations
-│   ├── config.py                       # Settings from .env
-│   ├── seed.py                         # AI provider seeding (Ollama + NVIDIA)
-│   ├── requirements.txt                # Python dependencies
-│   ├── .env                            # Environment variables (gitignored)
-│   │
-│   ├── models/                         # SQLAlchemy ORM models
-│   │   ├── user.py                     # User accounts (JWT auth)
-│   │   ├── resume.py                   # Uploaded resumes
-│   │   ├── resume_section.py           # Parsed resume sections
-│   │   ├── job.py                      # Analyzed job descriptions
-│   │   ├── tailoring_session.py        # Tailoring results (JSON storage)
-│   │   └── ai_provider_config.py       # Ollama + NVIDIA configs
-│   │
-│   ├── schemas/                        # Pydantic request/response schemas
-│   │   ├── user.py                     # Auth schemas
-│   │   └── ...                         # Other API schemas
-│   │
-│   ├── routers/                        # API route handlers
-│   │   ├── auth.py                     # POST /auth/signup, /login, GET /me
-│   │   ├── parse.py                    # POST /api/parse/upload
-│   │   ├── analyze.py                  # POST /api/analyze/job
-│   │   ├── tailor.py                   # POST /api/tailor/resume
-│   │   ├── score.py                    # POST /api/score/ats
-│   │   ├── export.py                   # POST /api/export/pdf (LaTeX)
-│   │   └── providers.py                # GET /api/providers/available
-│   │
-│   ├── modules/                        # Business logic
-│   │   ├── parse/
-│   │   │   ├── extractor.py            # PDF/DOCX text extraction
-│   │   │   └── section_detector.py     # 8 patterns + LLM fallback
-│   │   ├── analyze/
-│   │   │   └── jd_analyzer.py          # 4 regex patterns + LLM extraction
-│   │   ├── tailor/
-│   │   │   └── resume_tailor.py        # Ollama + NVIDIA NIM tailoring
-│   │   ├── score/
-│   │   │   └── ats_scorer.py           # Keyword matching algorithm
-│   │   └── export/
-│   │       ├── latex_filler.py         # LaTeX template filling + escaping
-│   │       └── latex_compiler.py       # pdflatex subprocess wrapper
-│   │
+│   ├── main.py
+│   ├── routers/
+│   ├── modules/
+│   ├── models/
+│   ├── schemas/
 │   ├── templates/
-│   │   └── professional.tex            # LaTeX resume template
-│   │
 │   └── data/
-│       ├── resumeforge.db              # SQLite database (gitignored)
-│       ├── uploads/                    # Uploaded files (gitignored)
-│       └── exports/                    # Generated PDFs (gitignored)
-│
 ├── frontend/
-│   ├── src/
-│   │   ├── main.jsx                    # React app entry
-│   │   ├── App.jsx                     # Router setup
-│   │   ├── index.css                   # TailwindCSS imports
-│   │   │
-│   │   ├── api/
-│   │   │   └── axios.js                # Axios config with JWT interceptor
-│   │   │
-│   │   ├── pages/
-│   │   │   ├── Login.jsx               # Login page with gradient UI
-│   │   │   └── Dashboard.jsx           # 5-step pipeline with progress bar
-│   │   │
-│   │   └── components/
-│   │       ├── ResumeUpload.jsx        # Step 1 with Card/Success components
-│   │       ├── JobInput.jsx            # Step 2 with re-analysis button
-│   │       ├── TailorPanel.jsx         # Step 3 with Ollama/NVIDIA selector
-│   │       ├── ATSScore.jsx            # Step 4 with before/after comparison
-│   │       └── ExportPanel.jsx         # Step 5 with PDF preview iframe
-│   │
-│   ├── vite.config.js                  # Vite + React config + proxy
-│   ├── tailwind.config.js              # TailwindCSS config
-│   └── package.json                    # Node dependencies
-│
-└── documentedGuide/                    # Day-by-day implementation guides
-    └── day7/
-        ├── ResumeForge_Day6_Day7_Complete.md
-        └── ResumeForge_Day7_LaTeX_Frontend.md
+│   └── src/
+│       ├── pages/
+│       ├── components/
+│       └── api/
+└── documentedGuide/
 ```
+
+### Request Flow
+
+1. The user uploads a resume or signs in through the React frontend.
+2. FastAPI stores and retrieves data through SQLAlchemy and SQLite.
+3. Job analysis and resume tailoring call Ollama or NVIDIA NIM when LLM help is needed.
+4. Export routes compile LaTeX to PDF with pdflatex and persist the result under `backend/data/exports`.
 
 ---
 
@@ -193,15 +208,27 @@ resumeforge/
 
 | Method | Route | Auth | Description |
 |--------|-------|------|-------------|
-| POST | `/auth/signup` | No | Create account (email, password, name) |
-| POST | `/auth/login` | No | Get JWT token (returns access_token) |
+| POST | `/auth/signup` | No | Create account |
+| POST | `/auth/login` | No | Get JWT token |
 | GET | `/auth/me` | Yes | Get current user profile |
-| POST | `/api/parse/upload` | Yes | Upload PDF/DOCX resume → parse sections |
-| POST | `/api/analyze/job` | Yes | Analyze job description → extract skills |
-| POST | `/api/tailor/resume` | Yes | Tailor resume with LLM (ollama or nvidia) |
-| POST | `/api/score/ats` | Yes | Score resume vs job (0-100, keyword match) |
-| POST | `/api/export/pdf` | Yes | Generate LaTeX PDF (original or tailored) |
-| GET | `/api/providers/available` | Yes | List AI providers (Ollama, NVIDIA NIM) |
+| GET | `/api/parse/status` | No | Parse service health check |
+| POST | `/api/parse/upload` | Yes | Upload resume and parse sections |
+| POST | `/api/parse/reparse/{resume_id}` | Yes | Re-run parsing for a stored resume |
+| GET | `/api/analyze/status` | No | Analyzer health check |
+| POST | `/api/analyze/job` | Yes | Analyze job description and extract skills |
+| GET | `/api/tailor/status` | No | Tailor service health check |
+| POST | `/api/tailor/resume` | Yes | Tailor resume to a job |
+| GET | `/api/score/status` | No | ATS scorer health check |
+| POST | `/api/score/ats` | Yes | Score resume against a job |
+| GET | `/api/export/status` | No | Export service health check |
+| POST | `/api/export/pdf` | Yes | Generate PDF from resume content |
+| POST | `/api/export/pdf/async` | Yes | Start asynchronous export job |
+| GET | `/api/export/status/{job_id}` | Yes | Check async export status |
+| GET | `/api/export/result/{job_id}` | Yes | Fetch async export result |
+| POST | `/api/export/master-latex` | Yes | Store master LaTeX for a resume |
+| GET | `/api/export/master-latex/{resume_id}` | Yes | Check whether master LaTeX exists |
+| GET | `/api/history/` | Yes | List tailoring sessions |
+| GET | `/api/history/{session_id}/pdf` | Yes | Download a session PDF |
 
 **Interactive API Docs:** `http://localhost:8000/docs` (Swagger UI)
 
